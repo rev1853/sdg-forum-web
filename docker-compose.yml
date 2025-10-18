@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     environment:
       VITE_API_BASE_URL: https://sdg-forum-api.truesurvi4.xyz
-      PORT: 4005
+      PORT: 4006
     ports:
-      - 4005
+      - 4006
     restart: unless-stopped
