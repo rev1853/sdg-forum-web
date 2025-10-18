@@ -1,0 +1,96 @@
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+
+import {
+  DEFAULT_API_BASE_URL,
+  createApiClient,
+  type ApiClient,
+  type ApiClientOptions,
+} from './client';
+import {
+  createAuthService,
+  createCommentsService,
+  createForumsService,
+  createModerationService,
+  createThreadsService,
+  type AuthService,
+  type CommentsService,
+  type ForumsService,
+  type ModerationService,
+  type ThreadsService,
+} from './services';
+
+export interface ApiProviderProps {
+  children: ReactNode;
+  baseUrl?: string;
+  initialToken?: string | null;
+  onUnauthorized?: ApiClientOptions['onUnauthorized'];
+}
+
+export interface ApiContextValue {
+  client: ApiClient;
+  baseUrl: string;
+  token: string | null;
+  setToken: (token: string | null) => void;
+  auth: AuthService;
+  forums: ForumsService;
+  threads: ThreadsService;
+  comments: CommentsService;
+  moderation: ModerationService;
+}
+
+const ApiContext = createContext<ApiContextValue | undefined>(undefined);
+
+export const ApiProvider = ({
+  children,
+  baseUrl,
+  initialToken = null,
+  onUnauthorized,
+}: ApiProviderProps) => {
+  const [token, setToken] = useState<string | null>(initialToken);
+  const resolvedBaseUrl = baseUrl ?? DEFAULT_API_BASE_URL;
+
+  const client = useMemo(
+    () =>
+      createApiClient({
+        baseUrl: resolvedBaseUrl,
+        getAccessToken: () => token,
+        onUnauthorized: () => {
+          setToken(null);
+          onUnauthorized?.();
+        },
+      }),
+    [resolvedBaseUrl, token, onUnauthorized, setToken],
+  );
+
+  const services = useMemo(
+    () => ({
+      auth: createAuthService(client),
+      forums: createForumsService(client),
+      threads: createThreadsService(client),
+      comments: createCommentsService(client),
+      moderation: createModerationService(client),
+    }),
+    [client],
+  );
+
+  const value = useMemo<ApiContextValue>(
+    () => ({
+      client,
+      baseUrl: resolvedBaseUrl,
+      token,
+      setToken,
+      ...services,
+    }),
+    [client, resolvedBaseUrl, services, setToken, token],
+  );
+
+  return <ApiContext.Provider value={value}>{children}</ApiContext.Provider>;
+};
+
+export const useApi = (): ApiContextValue => {
+  const context = useContext(ApiContext);
+  if (!context) {
+    throw new Error('useApi must be used within an ApiProvider');
+  }
+  return context;
+};
