@@ -13,11 +13,11 @@ const app = express();
 app.use(express.static(distDir));
 
 app.get('*', (_req, res) => {
-  res.sendFile(path.join(distDir, 'index.html'));
+    res.sendFile(path.join(distDir, 'index.html'));
 });
 
-const port = Number.parseInt(globalThis.process?.env?.PORT ?? '4173', 10);
+const port = Number.parseInt(4006, 10);
 
 app.listen(port, () => {
-  console.log(`🚀 Production server ready at http://0.0.0.0:${port}`);
+    console.log(`🚀 Production server ready at http://0.0.0.0:${port}`);
 });
