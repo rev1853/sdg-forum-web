@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "serve": "node server/index.js"
   },
   "dependencies": {
     "@chakra-ui/icons": "^2.2.4",
@@ -15,6 +16,7 @@
     "@emotion/react": "^11.14.0",
     "@gsap/react": "^2.1.2",
     "@tailwindcss/vite": "^4.0.3",
+    "express": "^4.21.2",
     "gsap": "^3.13.0",
     "next-themes": "^0.4.6",
     "ogl": "^1.0.11",
