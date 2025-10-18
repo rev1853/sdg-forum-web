@@ -197,6 +197,25 @@
   font-weight: 700;
 }
 
+@media (max-width: 768px) {
+  .announcement-bar {
+    width: calc(100% - 2.5rem);
+    bottom: 1.25rem;
+    padding: 14px;
+    font-size: 12px;
+  }
+
+  .announcement-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .announcement-share {
+    width: 100%;
+  }
+}
+
 .sticker-peel-demo {
   position: absolute;
   z-index: 2;
