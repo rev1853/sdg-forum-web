@@ -3,11 +3,17 @@ export interface PaginatedQuery {
   pageSize?: number;
 }
 
-export interface PaginatedResponse<T = unknown> {
-  data?: T[];
-  total?: number;
+export interface PaginationMeta {
   page?: number;
   pageSize?: number;
+  total?: number;
+  totalPages?: number;
+  [key: string]: unknown;
+}
+
+export interface PaginatedResponse<T = unknown> {
+  data?: T[];
+  pagination?: PaginationMeta;
   [key: string]: unknown;
 }
 

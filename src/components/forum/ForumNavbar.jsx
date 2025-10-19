@@ -161,6 +161,14 @@ const ForumNavbar = () => {
                   <span className="forum-profile-details__name">{user.name}</span>
                   <span className="forum-profile-details__email">{user.email}</span>
                 </div>
+                <Link
+                  to="/profile"
+                  className="forum-profile-action"
+                  role="menuitem"
+                  onClick={() => setIsProfileMenuOpen(false)}
+                >
+                  Profile settings
+                </Link>
                 <button type="button" className="forum-profile-action" onClick={handleSignOut} role="menuitem">
                   Sign out
                 </button>

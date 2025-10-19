@@ -8,15 +8,13 @@ import {
 } from './client';
 import {
   createAuthService,
-  createCommentsService,
-  createForumsService,
-  createModerationService,
+  createCategoriesService,
   createThreadsService,
+  createUsersService,
   type AuthService,
-  type CommentsService,
-  type ForumsService,
-  type ModerationService,
+  type CategoriesService,
   type ThreadsService,
+  type UsersService,
 } from './services';
 
 export interface ApiProviderProps {
@@ -32,10 +30,9 @@ export interface ApiContextValue {
   token: string | null;
   setToken: (token: string | null) => void;
   auth: AuthService;
-  forums: ForumsService;
   threads: ThreadsService;
-  comments: CommentsService;
-  moderation: ModerationService;
+  categories: CategoriesService;
+  users: UsersService;
 }
 
 const ApiContext = createContext<ApiContextValue | undefined>(undefined);
@@ -65,10 +62,9 @@ export const ApiProvider = ({
   const services = useMemo(
     () => ({
       auth: createAuthService(client),
-      forums: createForumsService(client),
       threads: createThreadsService(client),
-      comments: createCommentsService(client),
-      moderation: createModerationService(client),
+      categories: createCategoriesService(client),
+      users: createUsersService(client),
     }),
     [client],
   );

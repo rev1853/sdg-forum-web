@@ -12,7 +12,9 @@ import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import ForumThreadsPage from './pages/forum/ForumThreadsPage';
 import ForumChatPage from './pages/forum/ForumChatPage';
 import CreateThreadPage from './pages/forum/CreateThreadPage';
+import ThreadDetailPage from './pages/forum/ThreadDetailPage';
 import TermsPage from './pages/TermsPage';
+import ProfilePage from './pages/ProfilePage';
 
 const HeaderManager = () => {
   const location = useLocation();
@@ -20,7 +22,8 @@ const HeaderManager = () => {
   const hideDisplayHeader =
     location.pathname.startsWith('/auth') ||
     location.pathname.startsWith('/forum') ||
-    location.pathname === '/terms';
+    location.pathname === '/terms' ||
+    location.pathname.startsWith('/profile');
 
   const getActiveItem = () => {
     if (location.pathname === '/') return 'home';
@@ -38,9 +41,11 @@ const HeaderManager = () => {
         <Route path="/auth/register" element={<RegisterPage />} />
         <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
         <Route path="/forum/threads" element={<ForumThreadsPage />} />
+        <Route path="/forum/threads/:threadId" element={<ThreadDetailPage />} />
         <Route path="/forum/chat" element={<ForumChatPage />} />
         <Route path="/forum/create" element={<CreateThreadPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
       </Routes>
     </>
   );

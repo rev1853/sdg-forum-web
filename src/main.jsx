@@ -13,9 +13,11 @@ const handleUnauthorized = () => {
 };
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <AuthProvider>
-    <Provider>
-      <App />
-    </Provider>
-  </AuthProvider>
+  <ApiProvider baseUrl={apiBaseUrl} initialToken={initialToken} onUnauthorized={handleUnauthorized}>
+    <AuthProvider>
+      <Provider>
+        <App />
+      </Provider>
+    </AuthProvider>
+  </ApiProvider>
 );
