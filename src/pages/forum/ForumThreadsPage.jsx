@@ -292,6 +292,11 @@ const ForumThreadsPage = () => {
               {threadCards.map((thread) => {
                 const imageSource = thread.image ?? thread.image_url ?? null;
                 const cardClassName = imageSource ? 'thread-card' : 'thread-card thread-card--no-media';
+                const threadLink = thread?.id
+                  ? `/forum/threads/${thread.id}`
+                  : thread?.slug
+                    ? `/forum/threads/${thread.slug}`
+                    : null;
 
                 return (
                   <article key={thread.id} className={cardClassName}>
@@ -316,7 +321,13 @@ const ForumThreadsPage = () => {
                       </span>
                     </div>
 
-                    <h3>{thread.title ?? 'Untitled thread'}</h3>
+                    <h3>
+                      {threadLink ? (
+                        <Link to={threadLink}>{thread.title ?? 'Untitled thread'}</Link>
+                      ) : (
+                        thread.title ?? 'Untitled thread'
+                      )}
+                    </h3>
                     <p>{thread.body?.slice(0, 180) ?? 'No summary provided yet.'}</p>
 
                     <footer>
@@ -327,6 +338,11 @@ const ForumThreadsPage = () => {
                         <span>{thread.counts?.replies ?? 0} replies</span>
                         <span>{thread.counts?.likes ?? 0} likes</span>
                       </div>
+                      {threadLink ? (
+                        <Link to={threadLink} className="thread-card__view">
+                          View thread →
+                        </Link>
+                      ) : null}
                     </footer>
                   </article>
                 );
