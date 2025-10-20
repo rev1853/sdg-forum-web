@@ -6,6 +6,13 @@ import { useAuth } from '@/context/AuthContext';
 
 const PAGE_SIZE = 9;
 
+const isDesktopMatch = () => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return true;
+  }
+  return window.matchMedia('(min-width: 1025px)').matches;
+};
+
 const formatGoalLabel = (category) => {
   const sdgNumber = category?.sdg_number ?? category?.sdgNumber;
   if (sdgNumber !== undefined && sdgNumber !== null) {
@@ -67,6 +74,20 @@ const formatPostedAt = (value) => {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+const resolveThreadImage = (image, baseUrl) => {
+  if (!image) return null;
+  const source =
+    typeof image === 'string'
+      ? image
+      : image?.url ?? image?.src ?? image?.path ?? null;
+  if (!source) return null;
+  if (/^https?:\/\//i.test(source)) return source;
+  if (!baseUrl) return source;
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  const normalizedImage = source.startsWith('/') ? source.slice(1) : source;
+  return `${normalizedBase}/${normalizedImage}`;
+};
+
 const ForumThreadsPage = () => {
   const { threads, categories, users, baseUrl } = useApi();
   const { user } = useAuth();
@@ -88,6 +109,9 @@ const ForumThreadsPage = () => {
   const [threadsError, setThreadsError] = useState('');
 
   const [userThreads, setUserThreads] = useState([]);
+  const [threadInteractions, setThreadInteractions] = useState({});
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => isDesktopMatch());
 
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +232,9 @@ const ForumThreadsPage = () => {
     next.delete('page');
 
     setSearchParams(next);
+    if (!isDesktop) {
+      setIsSidebarOpen(false);
+    }
   };
 
   const handleSearchSubmit = (event) => {
@@ -238,10 +265,203 @@ const ForumThreadsPage = () => {
 
   const threadCards = useMemo(() => threadsResponse.data ?? [], [threadsResponse.data]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mediaQuery = window.matchMedia('(min-width: 1025px)');
+
+    const handleChange = (event) => {
+      setIsDesktop(event.matches);
+      if (event.matches) {
+        setIsSidebarOpen(false);
+      }
+    };
+
+    handleChange(mediaQuery);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
+
+  useEffect(() => {
+    setThreadInteractions((current) => {
+      const next = {};
+      threadCards.forEach((thread) => {
+        const identifier = thread?.id ?? thread?.slug;
+        if (!identifier) return;
+        const key = String(identifier);
+        const previous = current[key] ?? {};
+        const likedFromThread =
+          thread?.viewer_has_liked ??
+          thread?.liked ??
+          thread?.is_liked ??
+          thread?.liked_by_user;
+        const repostedFromThread =
+          thread?.viewer_has_reposted ??
+          thread?.reposted ??
+          thread?.is_reposted ??
+          thread?.reposted_by_user;
+        next[key] = {
+          likeCount:
+            thread?.counts?.likes ?? (Number.isInteger(previous.likeCount) ? previous.likeCount : 0),
+          repostCount:
+            thread?.counts?.reposts ??
+            (Number.isInteger(previous.repostCount) ? previous.repostCount : 0),
+          liked: Boolean(likedFromThread ?? previous.liked ?? false),
+          reposted: Boolean(repostedFromThread ?? previous.reposted ?? false),
+          isLiking: false,
+          isReposting: false,
+          error: previous.error ?? '',
+        };
+      });
+      return next;
+    });
+  }, [threadCards]);
+
+  const handleToggleLike = async (threadId) => {
+    if (!threadId) return;
+    const key = String(threadId);
+    const currentState = threadInteractions[key];
+    if (!currentState || currentState.isLiking) return;
+
+    if (!user?.id) {
+      setThreadInteractions((current) => {
+        const next = { ...current };
+        if (next[key]) {
+          next[key] = { ...next[key], error: 'Sign in to like threads.' };
+        }
+        return next;
+      });
+      return;
+    }
+
+    const nextLiked = !currentState.liked;
+    const likeDelta = nextLiked ? 1 : -1;
+    setThreadInteractions((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        liked: nextLiked,
+        likeCount: Math.max(0, (current[key]?.likeCount ?? 0) + likeDelta),
+        isLiking: true,
+        error: '',
+      },
+    }));
+
+    try {
+      if (nextLiked) {
+        await threads.likeThread(threadId);
+      } else {
+        await threads.unlikeThread(threadId);
+      }
+      setThreadInteractions((current) => ({
+        ...current,
+        [key]: {
+          ...current[key],
+          isLiking: false,
+        },
+      }));
+    } catch (error) {
+      console.error('Failed to toggle like', error);
+      const message =
+        error?.data?.message ||
+        error?.data?.error ||
+        error?.message ||
+        'Unable to update your like right now.';
+      setThreadInteractions((current) => ({
+        ...current,
+        [key]: {
+          ...current[key],
+          liked: currentState.liked,
+          likeCount: currentState.likeCount,
+          isLiking: false,
+          error: message,
+        },
+      }));
+    }
+  };
+
+  const handleToggleRepost = async (threadId) => {
+    if (!threadId) return;
+    const key = String(threadId);
+    const currentState = threadInteractions[key];
+    if (!currentState || currentState.isReposting) return;
+
+    if (!user?.id) {
+      setThreadInteractions((current) => {
+        const next = { ...current };
+        if (next[key]) {
+          next[key] = { ...next[key], error: 'Sign in to repost threads.' };
+        }
+        return next;
+      });
+      return;
+    }
+
+    const nextReposted = !currentState.reposted;
+    const repostDelta = nextReposted ? 1 : -1;
+    setThreadInteractions((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        reposted: nextReposted,
+        repostCount: Math.max(0, (current[key]?.repostCount ?? 0) + repostDelta),
+        isReposting: true,
+        error: '',
+      },
+    }));
+
+    try {
+      if (nextReposted) {
+        await threads.repostThread(threadId);
+      } else {
+        await threads.removeRepost(threadId);
+      }
+      setThreadInteractions((current) => ({
+        ...current,
+        [key]: {
+          ...current[key],
+          isReposting: false,
+        },
+      }));
+    } catch (error) {
+      console.error('Failed to toggle repost', error);
+      const message =
+        error?.data?.message ||
+        error?.data?.error ||
+        error?.message ||
+        'Unable to update your repost right now.';
+      setThreadInteractions((current) => ({
+        ...current,
+        [key]: {
+          ...current[key],
+          reposted: currentState.reposted,
+          repostCount: currentState.repostCount,
+          isReposting: false,
+          error: message,
+        },
+      }));
+    }
+  };
+
   const activeCategoryLabel = useMemo(() => {
     if (goalParam === 'all') return 'All Goals';
     return categoryOptions.find((option) => option.value === goalParam)?.label ?? 'Selected category';
   }, [goalParam, categoryOptions]);
+
+  const sidebarId = 'threads-sidebar-panel';
+  const sidebarClassName = [
+    'forum-sidebar',
+    !isDesktop ? 'chat-sidebar-panel' : '',
+    !isDesktop && isSidebarOpen ? 'is-open' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const sidebarStyle = !isDesktop && !isSidebarOpen ? { display: 'none' } : undefined;
 
   return (
     <section className="themed-page forum-page">
@@ -249,7 +469,22 @@ const ForumThreadsPage = () => {
       <ForumNavbar />
 
       <div className="forum-layout">
-        <aside className="forum-sidebar">
+        <aside
+          id={sidebarId}
+          className={sidebarClassName}
+          aria-hidden={!isDesktop && !isSidebarOpen}
+          style={sidebarStyle}
+        >
+          {!isDesktop && (
+            <button
+              type="button"
+              className="chat-sidebar-close"
+              aria-label="Close menu"
+              onClick={() => setIsSidebarOpen(false)}
+            >
+              Close
+            </button>
+          )}
           <div className="sidebar-card">
             <h2>Your post history</h2>
             <p>{user ? 'Pick up a conversation you started recently.' : 'Sign in to track and revisit your own threads.'}</p>
@@ -282,8 +517,28 @@ const ForumThreadsPage = () => {
             <Link to={user ? '/forum/create' : '/auth/login'}>{user ? 'Draft your update →' : 'Connect your impact log →'}</Link>
           </div>
         </aside>
+        {!isDesktop && isSidebarOpen ? (
+          <button
+            type="button"
+            className="chat-sidebar-backdrop"
+            aria-label="Close menu"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        ) : null}
 
         <main className="forum-main">
+          {!isDesktop && (
+            <button
+              type="button"
+              className="chat-sidebar-toggle"
+              onClick={() => setIsSidebarOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={isSidebarOpen ? 'true' : 'false'}
+              aria-controls={sidebarId}
+            >
+              Browse filters
+            </button>
+          )}
           <div className="forum-search">
             <form className="search-input" onSubmit={handleSearchSubmit}>
               <input
@@ -337,7 +592,7 @@ const ForumThreadsPage = () => {
           ) : (
             <div className="thread-grid">
               {threadCards.map((thread) => {
-                const imageSource = thread.image ?? thread.image_url ?? null;
+                const imageSource = resolveThreadImage(thread.image ?? thread.image_url, baseUrl);
                 const cardClassName = imageSource ? 'thread-card' : 'thread-card thread-card--no-media';
                 const threadLink = thread?.id
                   ? `/forum/threads/${thread.id}`
@@ -348,6 +603,14 @@ const ForumThreadsPage = () => {
                 const authorUsername = thread.author?.username;
                 const authorAvatar = getAvatarUrl(thread.author, authorName, baseUrl);
                 const postedAt = formatPostedAt(thread.created_at ?? thread.createdAt);
+                const interactionKey = thread?.id ?? thread?.slug;
+                const interactionState = interactionKey ? threadInteractions[String(interactionKey)] ?? {} : {};
+                const repliesCount = thread.counts?.replies ?? 0;
+                const likeCountDisplay =
+                  interactionState.likeCount ?? thread.counts?.likes ?? 0;
+                const repostCountDisplay =
+                  interactionState.repostCount ?? thread.counts?.reposts ?? 0;
+                const canInteract = Boolean(thread?.id);
 
                 return (
                   <article key={thread.id} className={cardClassName}>
@@ -396,16 +659,46 @@ const ForumThreadsPage = () => {
                           </small>
                         </div>
                       </div>
-                      <div className="thread-card__counts">
-                        <span>{thread.counts?.replies ?? 0} replies</span>
-                        <span>{thread.counts?.likes ?? 0} likes</span>
+                      <div className="thread-card__footer-actions">
+                        <div className="thread-card__actions">
+                          <button
+                            type="button"
+                            className={`ghost-button thread-card__action thread-like-button ${
+                              interactionState.liked ? 'is-liked' : ''
+                            }`}
+                            onClick={() => handleToggleLike(thread.id)}
+                            disabled={!canInteract || interactionState.isLiking}
+                            aria-pressed={interactionState.liked ? 'true' : 'false'}
+                          >
+                            Like • {likeCountDisplay}
+                          </button>
+                          <button
+                            type="button"
+                            className={`ghost-button thread-card__action thread-repost-button ${
+                              interactionState.reposted ? 'is-reposted' : ''
+                            }`}
+                            onClick={() => handleToggleRepost(thread.id)}
+                            disabled={!canInteract || interactionState.isReposting}
+                            aria-pressed={interactionState.reposted ? 'true' : 'false'}
+                          >
+                            Repost • {repostCountDisplay}
+                          </button>
+                        </div>
+                        <div className="thread-card__counts">
+                          <span>{repliesCount} replies</span>
+                        </div>
+                        {threadLink ? (
+                          <Link to={threadLink} className="thread-card__view">
+                            View thread →
+                          </Link>
+                        ) : null}
                       </div>
-                      {threadLink ? (
-                        <Link to={threadLink} className="thread-card__view">
-                          View thread →
-                        </Link>
-                      ) : null}
                     </footer>
+                    {interactionState.error ? (
+                      <p className="thread-card__interaction-error" role="status">
+                        {interactionState.error}
+                      </p>
+                    ) : null}
                   </article>
                 );
               })}

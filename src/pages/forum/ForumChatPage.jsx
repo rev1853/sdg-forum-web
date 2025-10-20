@@ -26,10 +26,19 @@ const messageSeeds = {
   ]
 };
 
+const isDesktopMatch = () => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return true;
+  }
+  return window.matchMedia('(min-width: 1025px)').matches;
+};
+
 const ForumChatPage = () => {
   const [activeRoom, setActiveRoom] = useState(forumRooms[0]);
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState(messageSeeds[forumRooms[0].id]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => isDesktopMatch());
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -39,13 +48,60 @@ const ForumChatPage = () => {
     setMessages(messageSeeds[activeRoom.id]);
   }, [activeRoom]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mediaQuery = window.matchMedia('(min-width: 1025px)');
+
+    const handleChange = (event) => {
+      setIsDesktop(event.matches);
+      if (event.matches) {
+        setIsSidebarOpen(false);
+      }
+    };
+
+    handleChange(mediaQuery);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
+
+  const sidebarId = 'chat-sidebar-panel';
+  const sidebarStyle = !isDesktop && !isSidebarOpen ? { display: 'none' } : undefined;
+  const sidebarClassName = [
+    'forum-sidebar',
+    !isDesktop ? 'chat-sidebar-panel' : '',
+    !isDesktop && isSidebarOpen ? 'is-open' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <section className="themed-page forum-page">
       <title>Forum Chat • SDG Forum</title>
       <ForumNavbar />
 
       <div className="forum-layout chat-layout">
-        <aside className="forum-sidebar">
+        <aside
+          id={sidebarId}
+          className={sidebarClassName}
+          aria-hidden={!isDesktop && !isSidebarOpen}
+          style={sidebarStyle}
+        >
+          {!isDesktop && (
+            <button
+              type="button"
+              className="chat-sidebar-close"
+              aria-label="Close menu"
+              onClick={() => setIsSidebarOpen(false)}
+            >
+              Close
+            </button>
+          )}
           <div className="sidebar-card">
             <h2>Forum rooms</h2>
             <p>Drop in for real-time updates, resource swaps, and quick coordination.</p>
@@ -53,7 +109,15 @@ const ForumChatPage = () => {
             <ul className="chat-room-list">
               {forumRooms.map(room => (
                 <li key={room.id} className={room.id === activeRoom.id ? 'is-active' : ''}>
-                  <button type="button" onClick={() => setActiveRoom(room)}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveRoom(room);
+                      if (!isDesktop) {
+                        setIsSidebarOpen(false);
+                      }
+                    }}
+                  >
                     <strong>{room.title}</strong>
                     <span>{room.description}</span>
                   </button>
@@ -62,8 +126,28 @@ const ForumChatPage = () => {
             </ul>
           </div>
         </aside>
+        {!isDesktop && isSidebarOpen ? (
+          <button
+            type="button"
+            className="chat-sidebar-backdrop"
+            aria-label="Close menu"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        ) : null}
 
         <main className="chat-main">
+          {!isDesktop && (
+            <button
+              type="button"
+              className="chat-sidebar-toggle"
+              onClick={() => setIsSidebarOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={isSidebarOpen ? 'true' : 'false'}
+              aria-controls={sidebarId}
+            >
+              Browse rooms
+            </button>
+          )}
           <header className="chat-header">
             <div>
               <h2>{activeRoom.title}</h2>

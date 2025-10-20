@@ -59,6 +59,20 @@ const getAvatarUrl = (person, name, baseUrl) => {
   return createAvatarDataUrl(fallbackName);
 };
 
+const resolveThreadImage = (image, baseUrl) => {
+  if (!image) return null;
+  const source =
+    typeof image === 'string'
+      ? image
+      : image?.url ?? image?.src ?? image?.path ?? null;
+  if (!source) return null;
+  if (/^https?:\/\//i.test(source)) return source;
+  if (!baseUrl) return source;
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  const normalizedImage = source.startsWith('/') ? source.slice(1) : source;
+  return `${normalizedBase}/${normalizedImage}`;
+};
+
 const ThreadDetailPage = () => {
   const { threadId } = useParams();
   const navigate = useNavigate();
@@ -166,7 +180,11 @@ const ThreadDetailPage = () => {
     loadReplies();
   }, [loadReplies]);
 
-  const hasImage = useMemo(() => Boolean(thread?.image ?? thread?.image_url), [thread]);
+  const threadImageUrl = useMemo(
+    () => resolveThreadImage(thread?.image ?? thread?.image_url, baseUrl),
+    [thread?.image, thread?.image_url, baseUrl],
+  );
+  const hasImage = Boolean(threadImageUrl);
   const formattedBody = useMemo(() => thread?.body ?? '', [thread?.body]);
 
   const canEdit = user?.id && thread?.author_id && user.id === thread.author_id;
@@ -308,7 +326,7 @@ const ThreadDetailPage = () => {
           <article className={`thread-detail__card ${hasImage ? '' : 'thread-detail__card--no-media'}`}>
             {hasImage ? (
               <div className="thread-detail__media">
-                <img src={thread.image ?? thread.image_url} alt={thread.title ?? 'Thread cover'} loading="lazy" />
+                <img src={threadImageUrl} alt={thread.title ?? 'Thread cover'} loading="lazy" />
               </div>
             ) : null}
 
