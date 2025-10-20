@@ -74,6 +74,7 @@ const ForumNavbar = () => {
     };
   }, [isProfileMenuOpen]);
 
+  const profileImage = user?.profile_picture ?? user?.profilePicture ?? null;
   const profileInitials = user?.name
     ?.split(' ')
     .filter(Boolean)
@@ -147,7 +148,11 @@ const ForumNavbar = () => {
                 ref={profileTriggerRef}
               >
                 <span className="forum-profile-avatar" aria-hidden="true">
-                  {profileInitials || 'U'}
+                  {profileImage ? (
+                    <img src={profileImage} alt="Your profile" />
+                  ) : (
+                    profileInitials || 'U'
+                  )}
                 </span>
                 <span className="forum-profile-name">{user.name}</span>
               </button>

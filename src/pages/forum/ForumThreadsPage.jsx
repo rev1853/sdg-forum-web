@@ -20,8 +20,55 @@ const formatStatus = (status) => {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
+const getInitials = (name) => {
+  if (!name) return 'U';
+  const tokens = name.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return name.slice(0, 2).toUpperCase();
+  if (tokens.length === 1) return tokens[0].slice(0, 2).toUpperCase();
+  return (tokens[0][0] + tokens[1][0]).toUpperCase();
+};
+
+const createAvatarDataUrl = (name) => {
+  const initials = getInitials(name);
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'>\n  <defs>\n    <linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'>\n      <stop offset='0%' stop-color='#4C1D95'/>\n      <stop offset='100%' stop-color='#1E40AF'/>\n    </linearGradient>\n  </defs>\n  <rect width='64' height='64' rx='32' fill='url(#bg)'/>\n  <text x='50%' y='50%' dominant-baseline='central' text-anchor='middle' font-family='Inter, Arial, sans-serif' font-size='26' font-weight='700' fill='#F8FAFC'>${initials}</text>\n</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
+const resolveProfileImage = (person, baseUrl) => {
+  const source =
+    person?.profile_picture ??
+    person?.profilePicture ??
+    person?.profile_picture_url ??
+    person?.profilePictureUrl ??
+    null;
+
+  if (!source) return null;
+  if (/^https?:\/\//i.test(source)) return source;
+  if (!baseUrl) return source;
+
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  if (source.startsWith('/')) {
+    return `${normalizedBase}${source}`;
+  }
+  return `${normalizedBase}/${source}`;
+};
+
+const getAvatarUrl = (person, name, baseUrl) => {
+  const resolved = resolveProfileImage(person, baseUrl);
+  if (resolved) return resolved;
+  const fallbackName = name && name.trim().length > 0 ? name : 'Community Member';
+  return createAvatarDataUrl(fallbackName);
+};
+
+const formatPostedAt = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
 const ForumThreadsPage = () => {
-  const { threads, categories, users } = useApi();
+  const { threads, categories, users, baseUrl } = useApi();
   const { user } = useAuth();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -297,6 +344,10 @@ const ForumThreadsPage = () => {
                   : thread?.slug
                     ? `/forum/threads/${thread.slug}`
                     : null;
+                const authorName = thread.author?.name ?? thread.author?.username ?? 'Unknown author';
+                const authorUsername = thread.author?.username;
+                const authorAvatar = getAvatarUrl(thread.author, authorName, baseUrl);
+                const postedAt = formatPostedAt(thread.created_at ?? thread.createdAt);
 
                 return (
                   <article key={thread.id} className={cardClassName}>
@@ -332,7 +383,18 @@ const ForumThreadsPage = () => {
 
                     <footer>
                       <div className="thread-card__author">
-                        <span>{thread.author?.name ?? thread.author?.username ?? 'Unknown author'}</span>
+                        <img
+                          src={authorAvatar}
+                          alt={`Avatar of ${authorName}`}
+                          className="thread-card__avatar"
+                        />
+                        <div>
+                          <span>{authorName}</span>
+                          <small>
+                            {authorUsername ? `@${authorUsername}` : 'Community member'}
+                            {postedAt ? ` • ${postedAt}` : ''}
+                          </small>
+                        </div>
                       </div>
                       <div className="thread-card__counts">
                         <span>{thread.counts?.replies ?? 0} replies</span>

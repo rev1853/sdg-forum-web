@@ -19,10 +19,50 @@ const formatGoalLabel = (category) => {
   return category?.name ?? 'Untitled category';
 };
 
+const getInitials = (name) => {
+  if (!name) return 'U';
+  const tokens = name.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return name.slice(0, 2).toUpperCase();
+  if (tokens.length === 1) return tokens[0].slice(0, 2).toUpperCase();
+  return (tokens[0][0] + tokens[1][0]).toUpperCase();
+};
+
+const createAvatarDataUrl = (name) => {
+  const initials = getInitials(name);
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'>\n  <defs>\n    <linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'>\n      <stop offset='0%' stop-color='#4C1D95'/>\n      <stop offset='100%' stop-color='#1E40AF'/>\n    </linearGradient>\n  </defs>\n  <rect width='72' height='72' rx='36' fill='url(#bg)'/>\n  <text x='50%' y='50%' dominant-baseline='central' text-anchor='middle' font-family='Inter, Arial, sans-serif' font-size='28' font-weight='700' fill='#F8FAFC'>${initials}</text>\n</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
+const resolveProfileImage = (person, baseUrl) => {
+  const source =
+    person?.profile_picture ??
+    person?.profilePicture ??
+    person?.profile_picture_url ??
+    person?.profilePictureUrl ??
+    null;
+
+  if (!source) return null;
+  if (/^https?:\/\//i.test(source)) return source;
+  if (!baseUrl) return source;
+
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  if (source.startsWith('/')) {
+    return `${normalizedBase}${source}`;
+  }
+  return `${normalizedBase}/${source}`;
+};
+
+const getAvatarUrl = (person, name, baseUrl) => {
+  const resolved = resolveProfileImage(person, baseUrl);
+  if (resolved) return resolved;
+  const fallbackName = name && name.trim().length > 0 ? name : 'Community Member';
+  return createAvatarDataUrl(fallbackName);
+};
+
 const ThreadDetailPage = () => {
   const { threadId } = useParams();
   const navigate = useNavigate();
-  const { threads } = useApi();
+  const { threads, baseUrl } = useApi();
   const { user, token } = useAuth();
 
   const [thread, setThread] = useState(null);
@@ -130,6 +170,10 @@ const ThreadDetailPage = () => {
   const formattedBody = useMemo(() => thread?.body ?? '', [thread?.body]);
 
   const canEdit = user?.id && thread?.author_id && user.id === thread.author_id;
+  const authorName = thread?.author?.name ?? thread?.author?.username ?? 'Unknown author';
+  const authorUsername = thread?.author?.username ?? null;
+  const authorAvatar = getAvatarUrl(thread?.author, authorName, baseUrl);
+  const postedAtLabel = formatDateTime(thread?.created_at ?? thread?.createdAt);
 
   const handleToggleLike = async () => {
     if (!threadId) return;
@@ -284,12 +328,20 @@ const ThreadDetailPage = () => {
             <h1>{thread.title ?? 'Untitled thread'}</h1>
 
             <div className="thread-detail__author">
-              <div className="thread-card__author">
-                <span>{thread.author?.name ?? thread.author?.username ?? 'Unknown author'}</span>
+              <div className="thread-detail__author-meta">
+                <img
+                  src={authorAvatar}
+                  alt={`Avatar of ${authorName}`}
+                  className="thread-detail__avatar"
+                />
+                <div className="thread-detail__author-info">
+                  <span>{authorName}</span>
+                  {authorUsername ? <small>@{authorUsername}</small> : null}
+                </div>
               </div>
-              <time dateTime={thread.created_at ?? thread.createdAt}>
-                {formatDateTime(thread.created_at ?? thread.createdAt)}
-              </time>
+              {postedAtLabel ? (
+                <time dateTime={thread.created_at ?? thread.createdAt}>{postedAtLabel}</time>
+              ) : null}
             </div>
 
             <div className="thread-detail__body">
@@ -346,21 +398,38 @@ const ThreadDetailPage = () => {
           <section className="thread-detail__replies">
             <h2>Replies</h2>
             <ul>
-              {replies.map((reply) => (
-                <li key={reply.id}>
-                  <header>
-                    <span>{reply.author?.name ?? reply.author?.username ?? 'Contributor'}</span>
-                    <time dateTime={reply.created_at ?? reply.createdAt}>
-                      {formatDateTime(reply.created_at ?? reply.createdAt)}
-                    </time>
-                  </header>
-                  <div>
-                    {(reply.body ?? '').split('\n').map((paragraph, index) => (
-                      <p key={index}>{paragraph}</p>
-                    ))}
-                  </div>
-                </li>
-              ))}
+              {replies.map((reply) => {
+                const replyAuthorName = reply.author?.name ?? reply.author?.username ?? 'Contributor';
+                const replyAuthorUsername = reply.author?.username ?? null;
+                const replyAvatar = getAvatarUrl(reply.author, replyAuthorName, baseUrl);
+                const replyTimestamp = formatDateTime(reply.created_at ?? reply.createdAt);
+
+                return (
+                  <li key={reply.id}>
+                    <header className="thread-reply-header">
+                      <div className="thread-reply-author">
+                        <img
+                          src={replyAvatar}
+                          alt={`Avatar of ${replyAuthorName}`}
+                          className="thread-reply-avatar"
+                        />
+                        <div>
+                          <span>{replyAuthorName}</span>
+                          {replyAuthorUsername ? <small>@{replyAuthorUsername}</small> : null}
+                        </div>
+                      </div>
+                      {replyTimestamp ? (
+                        <time dateTime={reply.created_at ?? reply.createdAt}>{replyTimestamp}</time>
+                      ) : null}
+                    </header>
+                    <div className="thread-reply-body">
+                      {(reply.body ?? '').split('\n').map((paragraph, index) => (
+                        <p key={index}>{paragraph}</p>
+                      ))}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         ) : thread && !isLoading && !error ? (
