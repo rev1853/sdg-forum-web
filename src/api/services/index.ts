@@ -1,5 +1,4 @@
 export * from './authService';
-export * from './commentsService';
-export * from './forumsService';
-export * from './moderationService';
+export * from './categoriesService';
 export * from './threadsService';
+export * from './usersService';

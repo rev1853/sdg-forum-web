@@ -1,4 +1,20 @@
-const DEFAULT_API_BASE_URL = "https://sdg-forum-api.truesurvi4.xyz";
+const FALLBACK_API_BASE_URL = 'https://sdg-forum-api.truesurvi4.xyz';
+
+const sanitizeBaseUrl = (value: string | undefined | null): string | null => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    try {
+        const parsed = new URL(trimmed);
+        const normalizedPath = parsed.pathname.endsWith('/') ? parsed.pathname.slice(0, -1) : parsed.pathname;
+        return `${parsed.origin}${normalizedPath}`;
+    } catch {
+        return null;
+    }
+};
+
+const DEFAULT_API_BASE_URL = sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL) ?? FALLBACK_API_BASE_URL;
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 
@@ -103,7 +119,7 @@ const readErrorPayload = async (response: Response): Promise<unknown> => {
 };
 
 export const createApiClient = (options: ApiClientOptions = {}): ApiClient => {
-    const baseUrl = options.baseUrl ?? DEFAULT_API_BASE_URL;
+    const baseUrl = sanitizeBaseUrl(options.baseUrl) ?? DEFAULT_API_BASE_URL;
 
     const request: ApiClient['request'] = async (config) => {
         const {

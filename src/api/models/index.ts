@@ -1,5 +1,5 @@
 export * from './auth';
-export * from './comments';
+export * from './categories';
 export * from './common';
-export * from './forums';
 export * from './threads';
+export * from './users';

@@ -7,8 +7,9 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [remember, setRemember] = useState(false);
-  const [formState, setFormState] = useState({ email: '', password: '' });
+  const [formState, setFormState] = useState({ identifier: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -19,15 +20,29 @@ const LoginPage = () => {
     setFormState(current => ({ ...current, [name]: value }));
   };
 
-  const handleSubmit = event => {
+  const handleSubmit = async event => {
     event.preventDefault();
-    if (!formState.email) return;
+    if (!formState.identifier || !formState.password) return;
 
     setIsSubmitting(true);
-    login({ email: formState.email });
+    setError('');
 
-    // Mimic a success redirect to the landing page once “logged in”.
-    navigate('/');
+    try {
+      await login({
+        identifier: formState.identifier.trim(),
+        password: formState.password,
+      });
+      navigate('/');
+    } catch (caughtError) {
+      const apiMessage =
+        caughtError?.data?.message ||
+        caughtError?.data?.error ||
+        caughtError?.message ||
+        'We could not sign you in. Please check your details and try again.';
+      setError(apiMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -41,13 +56,13 @@ const LoginPage = () => {
     >
       <form className="auth-form" onSubmit={handleSubmit}>
         <div className="form-group">
-          <label htmlFor="email">Email</label>
+          <label htmlFor="identifier">Email or username</label>
           <input
-            id="email"
-            name="email"
-            type="email"
+            id="identifier"
+            name="identifier"
+            type="text"
             placeholder="name@example.com"
-            value={formState.email}
+            value={formState.identifier}
             onChange={handleChange}
             required
           />
@@ -73,6 +88,8 @@ const LoginPage = () => {
           </label>
           <Link to="/auth/reset-password">Need help?</Link>
         </div>
+
+        {error ? <span className="form-error">{error}</span> : null}
 
         <button type="submit" className="primary-button" disabled={isSubmitting}>
           {isSubmitting ? 'Signing in…' : 'Sign in'}
