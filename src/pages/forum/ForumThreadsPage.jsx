@@ -82,10 +82,22 @@ const resolveThreadImage = (image, baseUrl) => {
       : image?.url ?? image?.src ?? image?.path ?? null;
   if (!source) return null;
   if (/^https?:\/\//i.test(source)) return source;
-  if (!baseUrl) return source;
-  const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
   const normalizedImage = source.startsWith('/') ? source.slice(1) : source;
-  return `${normalizedBase}/${normalizedImage}`;
+
+  if (baseUrl) {
+    try {
+      const parsed = new URL(baseUrl);
+      return `${parsed.origin}/${normalizedImage}`;
+    } catch (error) {
+      console.warn('Failed to parse API base URL for image resolution', error);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/${normalizedImage}`;
+  }
+
+  return `/${normalizedImage}`;
 };
 
 const ForumThreadsPage = () => {
