@@ -1,5 +1,6 @@
 import type { ApiClient } from '../client';
 import type {
+  GoogleLoginPayload,
   LoginPayload,
   LoginResponse,
   RegisterPayload,
@@ -13,6 +14,7 @@ import type {
 export interface AuthService {
   register(payload: RegisterPayload): Promise<RegisterResponse | void>;
   login(payload: LoginPayload): Promise<LoginResponse | void>;
+  loginWithGoogle(payload: GoogleLoginPayload): Promise<LoginResponse | void>;
   requestPasswordReset(
     payload: ResetPasswordRequestPayload,
   ): Promise<ResetPasswordRequestResponse | void>;
@@ -31,6 +33,12 @@ export const createAuthService = (client: ApiClient): AuthService => ({
   login: (payload) =>
     client.request<LoginResponse | void>({
       path: '/auth/login',
+      method: 'POST',
+      body: payload,
+    }),
+  loginWithGoogle: (payload) =>
+    client.request<LoginResponse | void>({
+      path: '/auth/google',
       method: 'POST',
       body: payload,
     }),
