@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const DEFAULT_API_BASE_URL = "https://sdg-forum-api.truesurvi4.xyz";
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 
