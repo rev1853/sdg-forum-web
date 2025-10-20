@@ -16,6 +16,10 @@ export interface LoginPayload {
   password: string;
 }
 
+export interface GoogleLoginPayload {
+  idToken: string;
+}
+
 export interface ResetPasswordRequestPayload {
   email: string;
 }

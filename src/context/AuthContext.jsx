@@ -33,6 +33,7 @@ const AuthContext = createContext({
     token: null,
     isReady: false,
     login: async () => undefined,
+    loginWithGoogle: async () => undefined,
     logout: () => undefined,
     refreshUser: async () => undefined,
 });
@@ -53,9 +54,8 @@ export const AuthProvider = ({ children }) => {
         }
     }, [token]);
 
-    const login = useCallback(
-        async credentials => {
-            const response = await auth.login(credentials);
+    const applyAuthentication = useCallback(
+        response => {
             if (!response) {
                 throw new Error('Unexpected empty response from the API.');
             }
@@ -80,7 +80,23 @@ export const AuthProvider = ({ children }) => {
 
             return nextUser;
         },
-        [auth, setToken]
+        [setToken]
+    );
+
+    const login = useCallback(
+        async credentials => {
+            const response = await auth.login(credentials);
+            return applyAuthentication(response);
+        },
+        [auth, applyAuthentication]
+    );
+
+    const loginWithGoogle = useCallback(
+        async idToken => {
+            const response = await auth.loginWithGoogle({ idToken });
+            return applyAuthentication(response);
+        },
+        [auth, applyAuthentication]
     );
 
     const logout = useCallback(() => {
@@ -111,10 +127,11 @@ export const AuthProvider = ({ children }) => {
             token,
             isReady,
             login,
+            loginWithGoogle,
             logout,
             refreshUser,
         }),
-        [user, token, isReady, login, logout, refreshUser]
+        [user, token, isReady, login, loginWithGoogle, logout, refreshUser]
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
