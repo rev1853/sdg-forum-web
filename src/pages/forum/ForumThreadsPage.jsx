@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import ForumNavbar from '../../components/forum/ForumNavbar';
 import { useApi } from '@/api';
 import { useAuth } from '@/context/AuthContext';
+import { ensureApiUploadsHost } from '@utils/media';
+import ForumNavbar from '../../components/forum/ForumNavbar';
 
 const PAGE_SIZE = 9;
 
@@ -50,14 +51,14 @@ const resolveProfileImage = (person, baseUrl) => {
     null;
 
   if (!source) return null;
-  if (/^https?:\/\//i.test(source)) return source;
-  if (!baseUrl) return source;
+  if (/^https?:\/\//i.test(source)) return ensureApiUploadsHost(source);
+  if (!baseUrl) return ensureApiUploadsHost(source);
 
   const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
   if (source.startsWith('/')) {
-    return `${normalizedBase}${source}`;
+    return ensureApiUploadsHost(`${normalizedBase}${source}`);
   }
-  return `${normalizedBase}/${source}`;
+  return ensureApiUploadsHost(`${normalizedBase}/${source}`);
 };
 
 const getAvatarUrl = (person, name, baseUrl) => {
@@ -81,23 +82,23 @@ const resolveThreadImage = (image, baseUrl) => {
       ? image
       : image?.url ?? image?.src ?? image?.path ?? null;
   if (!source) return null;
-  if (/^https?:\/\//i.test(source)) return source;
+  if (/^https?:\/\//i.test(source)) return ensureApiUploadsHost(source);
   const normalizedImage = source.startsWith('/') ? source.slice(1) : source;
 
   if (baseUrl) {
     try {
       const parsed = new URL(baseUrl);
-      return `${parsed.origin}/${normalizedImage}`;
+      return ensureApiUploadsHost(`${parsed.origin}/${normalizedImage}`);
     } catch (error) {
       console.warn('Failed to parse API base URL for image resolution', error);
     }
   }
 
   if (typeof window !== 'undefined') {
-    return `${window.location.origin}/${normalizedImage}`;
+    return ensureApiUploadsHost(`${window.location.origin}/${normalizedImage}`);
   }
 
-  return `/${normalizedImage}`;
+  return ensureApiUploadsHost(`/${normalizedImage}`);
 };
 
 const ForumThreadsPage = () => {
