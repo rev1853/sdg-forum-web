@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { gsap } from 'gsap';
-import { Logo } from '../../common/Misc/SVGComponents';
 import './DisplayHeader.css';
 import { useAuth } from '../../../context/AuthContext';
+import sdgsLogo from '../../../assets/sdgs-logo.png';
 
 const DisplayHeader = ({ activeItem }) => {
   const navRef = useRef(null);
@@ -116,7 +116,7 @@ const DisplayHeader = ({ activeItem }) => {
     <header className="header">
       <div className="header-container">
         <Link to="/" className="logo" aria-label="SDG Forum home">
-          <Logo />
+          <img src={sdgsLogo} alt="SDGs Forum" className="logo-image" />
         </Link>
 
         <div className="nav-cta-group">

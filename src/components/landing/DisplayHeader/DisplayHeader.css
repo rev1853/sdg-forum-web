@@ -12,6 +12,13 @@
   height: 160px;
   margin: 0 auto;
   background: linear-gradient(to bottom, #060010, transparent);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.header--hidden {
+  opacity: 0;
+  transform: translate(-50%, -40px);
+  pointer-events: none;
 }
 
 .header-container {
@@ -199,11 +206,16 @@
   pointer-events: none;
 }
 
-.logo svg {
-  height: 32px;
+.logo img {
+  height: 40px;
   width: auto;
   position: relative;
   z-index: 2;
+  display: block;
+}
+
+.logo-image {
+  max-width: 180px;
 }
 
 .landing-nav-items {
