@@ -1,119 +1,193 @@
+import { useEffect, useMemo, useState } from 'react';
 import './Testimonials.css';
 
+const API_DOCS_URL = 'https://sdg-forum-api.truesurvi4.xyz/docs.json';
+const DASHBOARD_URL = 'https://sdg-forum-api.truesurvi4.xyz/api/dashboard';
+
+const DEFAULT_ACTIONS = [
+  'Post a challenge – describe a local issue and ask for partners or data.',
+  'Share what works – publish case studies, toolkits, or policy drafts.',
+  'Team up – find collaborators by skill, location, or SDG focus.',
+  'Measure impact – track progress with community-made indicators.',
+];
+
+const formatNumber = (value) => {
+  const number = Number(value);
+  if (Number.isNaN(number)) return value;
+  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1)}M`;
+  if (number >= 1_000) return `${(number / 1_000).toFixed(1)}K`;
+  return number.toLocaleString();
+};
+
+const formatLabel = (label) =>
+  label
+    .replace(/_/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const mapDashboardMetrics = (payload) => {
+  if (!payload || typeof payload !== 'object') return [];
+
+  const numericEntries = Object.entries(payload).filter(([, value]) => typeof value === 'number');
+  const formatted = numericEntries
+    .sort(([, a], [, b]) => (b ?? 0) - (a ?? 0))
+    .slice(0, 6)
+    .map(([key, value]) => ({
+      key,
+      label: formatLabel(key),
+      value: formatNumber(value),
+    }));
+
+  if (formatted.length > 0) {
+    return formatted;
+  }
+
+  // Fallback: attempt to display lengths of arrays.
+  const arrayEntries = Object.entries(payload)
+    .filter(([, value]) => Array.isArray(value))
+    .map(([key, value]) => ({
+      key,
+      label: `${formatLabel(key)} Count`,
+      value: formatNumber(value.length),
+    }))
+    .slice(0, 6);
+
+  return arrayEntries;
+};
+
 const Testimonials = () => {
-  const tweets = [
-    {
-      id: 1,
-      avatar: 'https://pbs.twimg.com/profile_images/1794450494686932992/wqRqF4dt_400x400.jpg',
-      text: 'Really impressed by https://reactbits.dev. Check it out. The Splash Cursor effect is amazing.',
-      handle: '@makwanadeepam',
-      url: 'https://x.com/makwanadeepam/status/1879416558461890864'
-    },
-    {
-      id: 2,
-      avatar: 'https://pbs.twimg.com/profile_images/1918646280223608832/nqBF4zh__400x400.jpg',
-      text: 'Just discovered http://reactbits.dev — a sleek, minimal, and super dev-friendly React component library. Clean UI, easy to use, and perfect for modern projects.',
-      handle: '@syskey_dmg',
-      url: 'https://x.com/syskey_dmg/status/1929762648922398754'
-    },
-    {
-      id: 3,
-      avatar: 'https://pbs.twimg.com/profile_images/1593304942210478080/TUYae5z7_400x400.jpg',
-      text: 'Everything about this is next level: the components, the registry, dynamic items.',
-      handle: '@shadcn',
-      url: 'https://x.com/shadcn/status/1962854085587275932'
-    },
-    {
-      id: 4,
-      avatar: 'https://pbs.twimg.com/profile_images/1722358890807861248/75S7CB3G_400x400.jpg',
-      text: 'React Bits: A stellar collection of React components to make your landing pages shine ✨',
-      handle: '@gregberge_',
-      url: 'https://x.com/gregberge_/status/1896425347866059041'
-    },
-    {
-      id: 5,
-      avatar: 'https://pbs.twimg.com/profile_images/1554006663853592576/Gxtolzbo_400x400.jpg',
-      text: 'Literally the coolest react library in react -',
-      handle: '@Logreg_n_coffee',
-      url: 'https://x.com/Logreg_n_coffee/status/1889573533425991992'
-    },
-    {
-      id: 6,
-      avatar: 'https://pbs.twimg.com/profile_images/1880284612062056448/4Y2C8Xnv_400x400.jpg',
-      text: 'Have you heard of react bits? David Haz has lovingly put together a collection of animated and fully customizable React components.',
-      handle: '@DIYDevs',
-      url: 'https://x.com/DIYDevs/status/1892964440900763761'
-    },
-    {
-      id: 7,
-      avatar: 'https://pbs.twimg.com/profile_images/1724192049002340352/-tood-4D_400x400.jpg',
-      text: 'React Bits has got to be the most artistic ui component lib I have seen in a while 🤌',
-      handle: '@GibsonSMurray',
-      url: 'https://x.com/GibsonSMurray/status/1889909058838339626'
-    },
-    {
-      id: 8,
-      avatar: 'https://pbs.twimg.com/profile_images/1920165535351742464/CJU2uWMU_400x400.jpg',
-      text: 'Was scrolling X, I saw a post regarding UI library and got to know about React Bits and its just wow, the components are incredibly well designed! Really loved the overall feel and quality.',
-      handle: '@irohandev',
-      url: 'https://x.com/irohandev/status/1934877463064268822'
-    },
-    {
-      id: 9,
-      avatar: 'https://pbs.twimg.com/profile_images/1915754015381483520/07SpEJWa_400x400.jpg',
-      text: 'Today, I explored React Bit Animation, a lightweight library to add beautiful animations to your React apps! It`s super easy to use and helps make UIs feel much more dynamic and interactive ✨',
-      handle: '@Alishahzad2000M',
-      url: 'https://x.com/Alishahzad2000M/status/1916556455232127010'
-    }
-  ];
+  const [docsInfo, setDocsInfo] = useState(null);
+  const [dashboardData, setDashboardData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const row1Tweets = tweets.slice(0, 3);
-  const row2Tweets = tweets.slice(3, 6);
-  const row3Tweets = tweets.slice(6, 9);
+  useEffect(() => {
+    let cancelled = false;
 
-  const TweetCard = ({ tweet }) => (
-    <div className="testimonial-card" onClick={() => window.open(tweet.url, '_blank')}>
-      <div className="testimonial-content">
-        <p className="testimonial-text">{tweet.text}</p>
-        <div className="testimonial-author">
-          <img src={tweet.avatar} alt="Avatar" className="testimonial-avatar" />
-          <span className="testimonial-handle">{tweet.handle}</span>
-        </div>
-      </div>
-    </div>
-  );
+    const fetchData = async () => {
+      setIsLoading(true);
+      setError('');
 
-  const MarqueeRow = ({ tweets, direction = 'left', speed = 30 }) => {
-    const duplicatedTweets = [...tweets, ...tweets, ...tweets, ...tweets];
+      try {
+        const [docsResponse, dashboardResponse] = await Promise.allSettled([
+          fetch(API_DOCS_URL, { headers: { Accept: 'application/json' } }),
+          fetch(DASHBOARD_URL, { headers: { Accept: 'application/json' } }),
+        ]);
 
-    return (
-      <div className="testimonial-row">
-        <div className={`testimonial-marquee testimonial-marquee-${direction}`} style={{ '--speed': `${speed}s` }}>
-          {duplicatedTweets.map((tweet, index) => (
-            <TweetCard key={`${tweet.id}-${index}`} tweet={tweet} />
-          ))}
-        </div>
-      </div>
-    );
-  };
+        if (!cancelled) {
+          if (docsResponse.status === 'fulfilled' && docsResponse.value.ok) {
+            const docsJson = await docsResponse.value.json();
+            setDocsInfo(docsJson?.info ?? null);
+          }
+
+          if (dashboardResponse.status === 'fulfilled' && dashboardResponse.value.ok) {
+            const dashboardJson = await dashboardResponse.value.json();
+            const payload = dashboardJson?.data ?? dashboardJson;
+            setDashboardData(payload && typeof payload === 'object' ? payload : null);
+          }
+
+          if (
+            (docsResponse.status === 'rejected' || (docsResponse.value && !docsResponse.value.ok)) &&
+            (dashboardResponse.status === 'rejected' || (dashboardResponse.value && !dashboardResponse.value.ok))
+          ) {
+            setError('Unable to reach the SDG Forum API right now. Showing default actions instead.');
+          }
+        }
+      } catch (caughtError) {
+        if (!cancelled) {
+          setError(caughtError instanceof Error ? caughtError.message : 'Unexpected error while connecting to the API.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const dashboardMetrics = useMemo(() => mapDashboardMetrics(dashboardData), [dashboardData]);
+
+  const activeActions = dashboardMetrics.length > 0 ? [] : DEFAULT_ACTIONS;
 
   return (
     <section className="testimonials-section">
       <div className="testimonials-container">
-        <div className="testimonials-header">
-          <h3 className="testimonials-title">What You Can Do Here</h3>
-          <p className="testimonials-subtitle">
-            <ul>Post a Challenge – Describe a local issue. Ask for advice, partners, or data.</ul>
-            <ul>Share What Works – Publish case studies, toolkits, code, or policy drafts.</ul>
-            <ul>Team Up – Find collaborators by skill, location, or SDG focus.</ul>
-            <ul>Measure Impact – Track progress with community-made indicators.</ul></p>
+        <header className="testimonials-header">
+          <h3 className="testimonials-title">Live View • SDG Forum API</h3>
+          {docsInfo ? (
+            <p className="testimonials-subtitle">
+              Connected to <strong>{docsInfo?.title ?? 'SDG Forum API'}</strong> (v{docsInfo?.version ?? '—'}) at{' '}
+              <code className="testimonials-endpoint">sdg-forum-api.truesurvi4.xyz</code>
+            </p>
+          ) : (
+            <p className="testimonials-subtitle">
+              Connecting to <code className="testimonials-endpoint">sdg-forum-api.truesurvi4.xyz</code>…
+            </p>
+          )}
+        </header>
+
+        {error ? (
+          <div className="testimonials-alert" role="status">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="testimonials-grid">
+          <article className="testimonials-card">
+            <h4>What You Can Do</h4>
+            <ul className="testimonials-actions">
+              {activeActions.map((item, index) => (
+                <li key={index}>{item}</li>
+              ))}
+              {dashboardMetrics.length > 0 ? (
+                <li key="cta">Latest activity is live below – the forum is already creating momentum.</li>
+              ) : null}
+            </ul>
+          </article>
+
+          <article className="testimonials-card">
+            <h4>API Status</h4>
+            <dl className="testimonials-docs">
+              <div>
+                <dt>Documentation</dt>
+                <dd>
+                  <a href={API_DOCS_URL} target="_blank" rel="noreferrer">
+                    docs.json
+                  </a>
+                </dd>
+              </div>
+              <div>
+                <dt>Dashboard Endpoint</dt>
+                <dd>
+                  <a href={DASHBOARD_URL} target="_blank" rel="noreferrer">
+                    /api/dashboard
+                  </a>
+                </dd>
+              </div>
+              <div>
+                <dt>Connected</dt>
+                <dd>{isLoading ? 'Connecting…' : 'Online'}</dd>
+              </div>
+            </dl>
+          </article>
         </div>
 
-        <div className="testimonials-marquee-container">
-          <MarqueeRow tweets={row1Tweets} direction="left" speed={40} />
-          <MarqueeRow tweets={row2Tweets} direction="right" speed={35} />
-          <MarqueeRow tweets={row3Tweets} direction="left" speed={45} />
-        </div>
+        {dashboardMetrics.length > 0 ? (
+          <div className="testimonials-metrics">
+            {dashboardMetrics.map((metric) => (
+              <article className="testimonials-metric-card" key={metric.key}>
+                <span className="testimonials-metric-value">{metric.value}</span>
+                <span className="testimonials-metric-label">{metric.label}</span>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );

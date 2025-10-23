@@ -14,26 +14,25 @@ const SdgGoalsGallery = () => {
   const trackRef = useRef(null);
 
   useEffect(() => {
-    if (!sectionRef.current || !viewportRef.current || !trackRef.current) {
-      return;
-    }
+    if (!sectionRef.current || !trackRef.current || !viewportRef.current) return;
 
     const mm = gsap.matchMedia();
 
     const ctx = gsap.context(() => {
       mm.add('(min-width: 900px)', () => {
         const section = sectionRef.current;
-        const viewport = viewportRef.current;
         const track = trackRef.current;
+        const viewport = viewportRef.current;
         const header = document.querySelector('.header');
-
-        if (!section || !viewport || !track) {
-          return () => {};
-        }
+        if (!section || !track || !viewport) return () => {};
 
         const getScrollAmount = () => Math.max(0, track.scrollWidth - viewport.offsetWidth);
-        const hideHeader = () => header?.classList.add('header--hidden');
-        const showHeader = () => header?.classList.remove('header--hidden');
+        const hideHeader = () => {
+          if (header) header.classList.add('header--hidden');
+        };
+        const showHeader = () => {
+          if (header) header.classList.remove('header--hidden');
+        };
 
         const tween = gsap.to(track, {
           x: () => -getScrollAmount(),
@@ -49,8 +48,8 @@ const SdgGoalsGallery = () => {
             onEnter: hideHeader,
             onEnterBack: hideHeader,
             onLeave: showHeader,
-            onLeaveBack: showHeader,
-          },
+            onLeaveBack: showHeader
+          }
         });
 
         return () => {
@@ -99,13 +98,30 @@ const SdgGoalsGallery = () => {
       </div>
 
       <div className="sdg-gallery-overlay sdg-gallery-overlay--bottom">
-        <p className="sdg-gallery-description">
-          <span>Browse the Sustainable Development Goals in one place.</span>
-          <span>Each card highlights the focus so you can plan collaborations fast.</span>
-        </p>
+        <SplitText
+          text="Browse the Sustainable Development Goals in one place. Each card highlights the focus of a goal so you can plan collaborations, track progress, or gather inspiration for your next initiative."
+          tag="p"
+          className="sdg-gallery-description"
+          textAlign="center"
+          splitType="words"
+          delay={35}
+          duration={0.45}
+        />
       </div>
     </section>
   );
 };
 
 export default SdgGoalsGallery;
+      <div className="sdg-gallery-overlay sdg-gallery-overlay--top">
+        <SplitText
+          text="Every Goal, One Shared Mission"
+          tag="h2"
+          className="sdg-gallery-heading"
+          textAlign="center"
+          splitType="words"
+          delay={45}
+          duration={0.55}
+        />
+        <span className="sdg-gallery-badge">17 Global Goals</span>
+      </div>

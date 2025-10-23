@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import ForumNavbar from '../components/forum/ForumNavbar';
 import { useApi } from '@/api';
 import { useAuth } from '@/context/AuthContext';
-
-const resolveProfileImage = (user) => user?.profile_picture ?? user?.profilePicture ?? null;
+import { resolveProfileImageUrl } from '@utils/media';
+import ForumNavbar from '../components/forum/ForumNavbar';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 const ProfilePage = () => {
-  const { users } = useApi();
+  const { users, baseUrl } = useApi();
   const { user, token, refreshUser } = useAuth();
 
   const [formState, setFormState] = useState({
@@ -26,9 +25,9 @@ const ProfilePage = () => {
       name: user?.name ?? '',
       email: user?.email ?? '',
       username: user?.username ?? '',
-      avatar: resolveProfileImage(user),
+      avatar: resolveProfileImageUrl(user, baseUrl),
     }),
-    [user],
+    [user, baseUrl],
   );
 
   useEffect(() => {
@@ -38,10 +37,10 @@ const ProfilePage = () => {
       email: user.email ?? '',
       username: user.username ?? '',
     });
-    setPreviewUrl(resolveProfileImage(user));
+    setPreviewUrl(resolveProfileImageUrl(user, baseUrl));
     setRemoveAvatar(false);
     setNewAvatar(null);
-  }, [user]);
+  }, [user, baseUrl]);
 
   useEffect(() => {
     return () => {

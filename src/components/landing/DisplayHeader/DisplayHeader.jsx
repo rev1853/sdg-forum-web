@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { gsap } from 'gsap';
 import './DisplayHeader.css';
+import { useApi } from '@/api';
+import { resolveProfileImageUrl } from '@utils/media';
 import { useAuth } from '../../../context/AuthContext';
 import sdgsLogo from '../../../assets/sdgs-logo.png';
 
@@ -15,6 +17,7 @@ const DisplayHeader = ({ activeItem }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { baseUrl } = useApi();
 
   const navLinks = useMemo(
     () => {
@@ -98,6 +101,7 @@ const DisplayHeader = ({ activeItem }) => {
     };
   }, [isProfileMenuOpen]);
 
+  const profileImage = useMemo(() => resolveProfileImageUrl(user, baseUrl), [user, baseUrl]);
   const profileInitials = user?.name
     ?.split(' ')
     .filter(Boolean)
@@ -177,7 +181,7 @@ const DisplayHeader = ({ activeItem }) => {
                 ref={profileTriggerRef}
               >
                 <span className="profile-avatar" aria-hidden="true">
-                  {profileInitials || 'U'}
+                  {profileImage ? <img src={profileImage} alt="Your profile" /> : profileInitials || 'U'}
                 </span>
                 <span className="profile-name">{user.name}</span>
               </button>

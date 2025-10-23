@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useApi } from '@/api';
+import { resolveProfileImageUrl } from '@utils/media';
 import { useAuth } from '../../context/AuthContext';
 
 const ForumNavbar = () => {
@@ -11,6 +13,7 @@ const ForumNavbar = () => {
   const profileMenuRef = useRef(null);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { baseUrl } = useApi();
 
   const links = [
     { to: '/forum/threads', label: 'Threads' },
@@ -74,7 +77,7 @@ const ForumNavbar = () => {
     };
   }, [isProfileMenuOpen]);
 
-  const profileImage = user?.profile_picture ?? user?.profilePicture ?? null;
+  const profileImage = useMemo(() => resolveProfileImageUrl(user, baseUrl), [user, baseUrl]);
   const profileInitials = user?.name
     ?.split(' ')
     .filter(Boolean)

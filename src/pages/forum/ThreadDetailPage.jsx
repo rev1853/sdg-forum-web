@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApi } from '@/api';
 import { useAuth } from '@/context/AuthContext';
-import { ensureApiUploadsHost } from '@utils/media';
+import { ensureApiUploadsHost, resolveProfileImageUrl } from '@utils/media';
 import ForumNavbar from '../../components/forum/ForumNavbar';
 
 const formatDateTime = (value) => {
@@ -34,27 +34,8 @@ const createAvatarDataUrl = (name) => {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
-const resolveProfileImage = (person, baseUrl) => {
-  const source =
-    person?.profile_picture ??
-    person?.profilePicture ??
-    person?.profile_picture_url ??
-    person?.profilePictureUrl ??
-    null;
-
-  if (!source) return null;
-  if (/^https?:\/\//i.test(source)) return ensureApiUploadsHost(source);
-  if (!baseUrl) return ensureApiUploadsHost(source);
-
-  const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-  if (source.startsWith('/')) {
-    return ensureApiUploadsHost(`${normalizedBase}${source}`);
-  }
-  return ensureApiUploadsHost(`${normalizedBase}/${source}`);
-};
-
 const getAvatarUrl = (person, name, baseUrl) => {
-  const resolved = resolveProfileImage(person, baseUrl);
+  const resolved = resolveProfileImageUrl(person, baseUrl);
   if (resolved) return resolved;
   const fallbackName = name && name.trim().length > 0 ? name : 'Community Member';
   return createAvatarDataUrl(fallbackName);
