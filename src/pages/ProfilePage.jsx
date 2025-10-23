@@ -136,7 +136,7 @@ const ProfilePage = () => {
 
       if (updated) {
         setFeedback({ type: 'success', message: 'Profile updated successfully.' });
-        setPreviewUrl(resolveProfileImage(updated));
+        setPreviewUrl(resolveProfileImageUrl(updated, baseUrl));
         setNewAvatar(null);
         setRemoveAvatar(false);
       } else {

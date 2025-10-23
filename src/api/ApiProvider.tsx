@@ -9,10 +9,12 @@ import {
 import {
   createAuthService,
   createCategoriesService,
+  createChatService,
   createThreadsService,
   createUsersService,
   type AuthService,
   type CategoriesService,
+  type ChatService,
   type ThreadsService,
   type UsersService,
 } from './services';
@@ -33,6 +35,7 @@ export interface ApiContextValue {
   threads: ThreadsService;
   categories: CategoriesService;
   users: UsersService;
+  chat: ChatService;
 }
 
 const ApiContext = createContext<ApiContextValue | undefined>(undefined);
@@ -65,6 +68,7 @@ export const ApiProvider = ({
       threads: createThreadsService(client),
       categories: createCategoriesService(client),
       users: createUsersService(client),
+      chat: createChatService(client),
     }),
     [client],
   );

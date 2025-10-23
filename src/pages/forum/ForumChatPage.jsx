@@ -1,29 +1,159 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForumNavbar from '../../components/forum/ForumNavbar';
+import { useApi } from '@/api';
+import { useAuth } from '../../context/AuthContext';
+import useChatSocket from '@/hooks/useChatSocket';
 
-const forumRooms = [
-  { id: 'global', title: 'Global Announcements', description: 'Platform updates and community-wide news.' },
-  { id: 'goal-3', title: 'SDG 3 · Health + Well-being', description: 'Healthcare delivery, nutrition, mental health initiatives.' },
-  { id: 'goal-6', title: 'SDG 6 · Clean Water', description: 'Water purification, sanitation systems, watershed protection.' },
-  { id: 'goal-11', title: 'SDG 11 · Sustainable Cities', description: 'Urban planning, housing access, resilient infrastructure.' }
+const FALLBACK_ROOMS = [
+  {
+    id: 'global',
+    title: 'Global Announcements',
+    description: 'Platform updates and community-wide news.',
+    messages: [
+      {
+        id: 'global-1',
+        author: 'Moderator',
+        timestamp: '08:24',
+        content: 'Welcome to the live chat! Share quick updates and link to your threads for deeper dives.',
+      },
+      {
+        id: 'global-2',
+        author: 'Zahra',
+        timestamp: '08:27',
+        content: 'We just published a new guide for inclusive co-design workshops. Feedback welcome.',
+      },
+    ],
+  },
+  {
+    id: 'goal-3',
+    title: 'SDG 3 · Health + Well-being',
+    description: 'Healthcare delivery, nutrition, mental health initiatives.',
+    messages: [
+      {
+        id: 'goal-3-1',
+        author: 'Dr. Lina',
+        timestamp: '07:55',
+        content: 'Cold chain pilot reached 16 clinics this week. Solar units are holding temperature in rainy season.',
+      },
+      {
+        id: 'goal-3-2',
+        author: 'Santi',
+        timestamp: '08:03',
+        content: 'Sharing WHO data set updates for those syncing weekly dashboards.',
+      },
+    ],
+  },
+  {
+    id: 'goal-6',
+    title: 'SDG 6 · Clean Water',
+    description: 'Water purification, sanitation systems, watershed protection.',
+    messages: [
+      {
+        id: 'goal-6-1',
+        author: 'Abena',
+        timestamp: '09:10',
+        content: 'We have spare capacity on our filtration units. DM if your community needs a shipment.',
+      },
+      {
+        id: 'goal-6-2',
+        author: 'Elisa',
+        timestamp: '09:22',
+        content: 'Does anyone have sample policies for community-led maintenance funding?',
+      },
+    ],
+  },
+  {
+    id: 'goal-11',
+    title: 'SDG 11 · Sustainable Cities',
+    description: 'Urban planning, housing access, resilient infrastructure.',
+    messages: [
+      {
+        id: 'goal-11-1',
+        author: 'Ravi',
+        timestamp: '10:01',
+        content: 'Modular micro-housing prototypes are ready for review. Looking for testers in coastal regions.',
+      },
+    ],
+  },
 ];
 
-const messageSeeds = {
-  global: [
-    { id: 1, author: 'Moderator', timestamp: '08:24', content: 'Welcome to the live chat! Share quick updates and link to your threads for deeper dives.' },
-    { id: 2, author: 'Zahra', timestamp: '08:27', content: 'We just published a new guide for inclusive co-design workshops. Feedback welcome.' }
-  ],
-  'goal-3': [
-    { id: 1, author: 'Dr. Lina', timestamp: '07:55', content: 'Cold chain pilot reached 16 clinics this week. Solar units are holding temperature in rainy season.' },
-    { id: 2, author: 'Santi', timestamp: '08:03', content: 'Sharing WHO data set updates for those syncing weekly dashboards.' }
-  ],
-  'goal-6': [
-    { id: 1, author: 'Abena', timestamp: '09:10', content: 'We have spare capacity on our filtration units. DM if your community needs a shipment.' },
-    { id: 2, author: 'Elisa', timestamp: '09:22', content: 'Does anyone have sample policies for community-led maintenance funding?' }
-  ],
-  'goal-11': [
-    { id: 1, author: 'Ravi', timestamp: '10:01', content: 'Modular micro-housing prototypes are ready for review. Looking for testers in coastal regions.' }
-  ]
+const generateFallbackId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const mapApiGroupToRoom = (group) => {
+  if (!group || typeof group !== 'object') {
+    return null;
+  }
+
+  const categories = Array.isArray(group.categories)
+    ? group.categories.map((entry) => entry?.category?.name).filter(Boolean)
+    : [];
+
+  const fallbackDescription = categories.length > 0 ? `Focus: ${categories.join(', ')}` : 'Live discussion room.';
+  const description =
+    typeof group.description === 'string' && group.description.trim().length > 0
+      ? group.description
+      : fallbackDescription;
+
+  return {
+    id: group.id ?? group.slug ?? group.name ?? generateFallbackId(),
+    title: group.name ?? 'SDG Forum Live Room',
+    description,
+    categories,
+    source: 'api',
+  };
+};
+
+const formatTimestamp = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const mapApiMessage = (message) => {
+  if (!message || typeof message !== 'object') return null;
+  const rawTimestamp = message.created_at ?? message.createdAt ?? message.timestamp ?? message.sentAt;
+  const author =
+    message.sender?.name ??
+    message.sender?.username ??
+    message.author?.name ??
+    message.author?.username ??
+    message.user?.name ??
+    message.user?.username ??
+    'Participant';
+
+  const content = message.content ?? message.body ?? message.text ?? '';
+  if (!content) return null;
+
+  return {
+    id: message.id ?? `${rawTimestamp ?? Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    author,
+    timestamp: message.timestamp ?? formatTimestamp(rawTimestamp) ?? '',
+    content,
+  };
+};
+
+const getMessageGroupId = input => {
+  const message = input?.message ?? input;
+
+  return (
+    message?.groupId ??
+    message?.group_id ??
+    message?.group?.id ??
+    message?.roomId ??
+    message?.room_id ??
+    null
+  );
+};
+
+const getMessageId = input => {
+  const message = input?.message ?? input;
+  return message?.id ?? message?.messageId ?? message?.message_id ?? null;
 };
 
 const isDesktopMatch = () => {
@@ -34,19 +164,240 @@ const isDesktopMatch = () => {
 };
 
 const ForumChatPage = () => {
-  const [activeRoom, setActiveRoom] = useState(forumRooms[0]);
+  const { chat, baseUrl } = useApi();
+  const { token } = useAuth();
+  const [rooms, setRooms] = useState([]);
+  const [activeRoomId, setActiveRoomId] = useState(null);
   const [draft, setDraft] = useState('');
-  const [messages, setMessages] = useState(messageSeeds[forumRooms[0].id]);
+  const [messages, setMessages] = useState([]);
+  const [isRoomsLoading, setIsRoomsLoading] = useState(false);
+  const [isMessagesLoading, setIsMessagesLoading] = useState(false);
+  const [roomsError, setRoomsError] = useState('');
+  const [messagesError, setMessagesError] = useState('');
+  const [sendError, setSendError] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(() => isDesktopMatch());
+  const [socketWarning, setSocketWarning] = useState('');
+  const socketRoomRef = useRef(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
   useEffect(() => {
-    setMessages(messageSeeds[activeRoom.id]);
-  }, [activeRoom]);
+    let cancelled = false;
+
+    const loadRooms = async () => {
+      setIsRoomsLoading(true);
+      setRoomsError('');
+
+      try {
+        const response = await chat.listGroups({ pageSize: 12 });
+        if (cancelled) return;
+
+        const rawRooms = Array.isArray(response?.data) ? response.data : [];
+        const mappedRooms = rawRooms.map(mapApiGroupToRoom).filter(Boolean);
+
+        if (mappedRooms.length > 0) {
+          setRooms(mappedRooms);
+          setActiveRoomId((prev) =>
+            prev && mappedRooms.some((room) => room.id === prev) ? prev : mappedRooms[0].id,
+          );
+          return;
+        }
+
+        setRooms(FALLBACK_ROOMS);
+        setActiveRoomId(FALLBACK_ROOMS[0]?.id ?? null);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load chat rooms', error);
+          setRoomsError('Unable to load live chat rooms right now. Showing a preview instead.');
+          setRooms(FALLBACK_ROOMS);
+          setActiveRoomId(FALLBACK_ROOMS[0]?.id ?? null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsRoomsLoading(false);
+        }
+      }
+    };
+
+    loadRooms();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chat]);
+
+  useEffect(() => {
+    if (rooms.length > 0 && !activeRoomId) {
+      setActiveRoomId(rooms[0].id);
+    }
+  }, [rooms, activeRoomId]);
+
+  const activeRoom = useMemo(
+    () => rooms.find((room) => room.id === activeRoomId) ?? null,
+    [rooms, activeRoomId],
+  );
+
+  const handleIncomingMessage = useCallback(
+    (payload) => {
+      const targetGroupId = getMessageGroupId(payload);
+      if (!targetGroupId) return;
+      if (!activeRoom || activeRoom.source !== 'api') return;
+      if (targetGroupId !== activeRoom.id) return;
+
+      const mapped = mapApiMessage(payload?.message ?? payload);
+      if (!mapped) return;
+
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === mapped.id)) {
+          return prev;
+        }
+        return [...prev, mapped];
+      });
+    },
+    [activeRoom],
+  );
+
+  const handleRemovedMessage = useCallback(
+    (payload) => {
+      const targetGroupId = getMessageGroupId(payload);
+      const identifier = getMessageId(payload);
+      if (!identifier) return;
+      if (!activeRoom || activeRoom.source !== 'api') return;
+      if (targetGroupId && targetGroupId !== activeRoom.id) return;
+      setMessages((prev) => prev.filter((message) => message.id !== identifier));
+    },
+    [activeRoom],
+  );
+
+  const {
+    status: socketStatus,
+    error: socketError,
+    joinGroup: joinSocketGroup,
+    leaveGroup: leaveSocketGroup,
+    sendMessage: socketSendMessage,
+    isConnected: isSocketConnected,
+  } = useChatSocket({
+    baseUrl,
+    token,
+    enabled: Boolean(token),
+    onMessage: handleIncomingMessage,
+    onMessageRemoved: handleRemovedMessage,
+  });
+
+  useEffect(() => {
+    if (socketError) {
+      setSocketWarning(socketError.message ?? 'Live chat connection lost. Reconnecting…');
+    } else {
+      setSocketWarning('');
+    }
+  }, [socketError]);
+
+  const loadMessages = useCallback(
+    async (room) => {
+      setSendError('');
+
+      if (!room) {
+        setMessages([]);
+        setMessagesError('');
+        return;
+      }
+
+      if (room.source !== 'api') {
+        setMessages(room.messages ?? []);
+        setMessagesError('');
+        return;
+      }
+
+      if (!token) {
+        setMessages([]);
+        setMessagesError('Sign in to view live chat activity and participate in the conversation.');
+        return;
+      }
+
+      setIsMessagesLoading(true);
+      setMessagesError('');
+
+      try {
+        await chat.joinGroup(room.id).catch(() => undefined);
+        const response = await chat.listMessages(room.id, { limit: 50 });
+        const payload =
+          (response && 'messages' in response ? response.messages : undefined) ??
+          (response && Array.isArray(response?.data) ? response.data : undefined) ??
+          [];
+        const mappedMessages = Array.isArray(payload) ? payload.map(mapApiMessage).filter(Boolean) : [];
+        setMessages(mappedMessages);
+      } catch (error) {
+        console.error('Failed to load chat messages', error);
+        setMessages([]);
+        setMessagesError('Unable to load messages from the SDG Forum API right now.');
+      } finally {
+        setIsMessagesLoading(false);
+      }
+    },
+    [chat, token],
+  );
+
+  useEffect(() => {
+    loadMessages(activeRoom);
+  }, [activeRoom, loadMessages]);
+
+  useEffect(() => {
+    if (!activeRoom || activeRoom.source !== 'api' || !token) {
+      const previous = socketRoomRef.current;
+      if (previous) {
+        leaveSocketGroup(previous).catch(() => undefined);
+        socketRoomRef.current = null;
+      }
+      return;
+    }
+
+    const targetRoomId = activeRoom.id;
+
+    const ensureSubscription = async () => {
+      try {
+        await chat.joinGroup(targetRoomId).catch(() => undefined);
+      } catch (error) {
+        console.error('Failed to join chat room via API', error);
+      }
+
+      if (!isSocketConnected) {
+        return;
+      }
+
+      if (socketRoomRef.current && socketRoomRef.current !== targetRoomId) {
+        await leaveSocketGroup(socketRoomRef.current).catch(() => undefined);
+        socketRoomRef.current = null;
+      }
+
+      if (socketRoomRef.current === targetRoomId) {
+        return;
+      }
+
+      try {
+        await joinSocketGroup(targetRoomId);
+        socketRoomRef.current = targetRoomId;
+      } catch (error) {
+        console.error('Failed to subscribe to chat room', error);
+        setSocketWarning('Unable to subscribe to live updates for this room.');
+      }
+    };
+
+    ensureSubscription();
+  }, [activeRoom, chat, isSocketConnected, joinSocketGroup, leaveSocketGroup, token]);
+
+  useEffect(
+    () => () => {
+      if (socketRoomRef.current) {
+        leaveSocketGroup(socketRoomRef.current).catch(() => undefined);
+        socketRoomRef.current = null;
+      }
+    },
+    [leaveSocketGroup],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
@@ -70,6 +421,25 @@ const ForumChatPage = () => {
     return () => mediaQuery.removeListener(handleChange);
   }, []);
 
+  const connectionLabel = useMemo(() => {
+    if (!activeRoom || activeRoom.source !== 'api') {
+      return 'Preview';
+    }
+    if (!token) {
+      return 'Sign in required';
+    }
+    if (socketStatus === 'connected') {
+      return 'Live now';
+    }
+    if (socketStatus === 'connecting') {
+      return 'Connecting…';
+    }
+    if (socketWarning) {
+      return 'Offline';
+    }
+    return 'Idle';
+  }, [activeRoom, socketStatus, socketWarning, token]);
+
   const sidebarId = 'chat-sidebar-panel';
   const sidebarStyle = !isDesktop && !isSidebarOpen ? { display: 'none' } : undefined;
   const sidebarClassName = [
@@ -79,6 +449,51 @@ const ForumChatPage = () => {
   ]
     .filter(Boolean)
     .join(' ');
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!draft.trim() || !activeRoom) return;
+
+    if (activeRoom.source !== 'api') {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: prev.length + 1,
+          author: 'You',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          content: draft.trim(),
+        },
+      ]);
+      setDraft('');
+      return;
+    }
+
+    if (!token) {
+      setMessagesError('Sign in to join the conversation.');
+      return;
+    }
+
+    if (!isSocketConnected) {
+      setSendError('Reconnecting to live chat. Please try again momentarily.');
+      return;
+    }
+
+    setIsSending(true);
+    setSendError('');
+
+    try {
+      const result = await socketSendMessage({ groupId: activeRoom.id, content: draft.trim() });
+      setDraft('');
+      if (!result || result?.status !== 'pending') {
+        await loadMessages(activeRoom);
+      }
+    } catch (error) {
+      console.error('Failed to send message', error);
+      setSendError(error?.message ?? 'Unable to send message right now.');
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   return (
     <section className="themed-page forum-page">
@@ -106,13 +521,19 @@ const ForumChatPage = () => {
             <h2>Forum rooms</h2>
             <p>Drop in for real-time updates, resource swaps, and quick coordination.</p>
 
+            {roomsError ? (
+              <p className="chat-status chat-status--info" role="status">
+                {roomsError}
+              </p>
+            ) : null}
+
             <ul className="chat-room-list">
-              {forumRooms.map(room => (
-                <li key={room.id} className={room.id === activeRoom.id ? 'is-active' : ''}>
+              {rooms.map(room => (
+                <li key={room.id} className={room.id === activeRoom?.id ? 'is-active' : ''}>
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveRoom(room);
+                      setActiveRoomId(room.id);
                       if (!isDesktop) {
                         setIsSidebarOpen(false);
                       }
@@ -124,6 +545,12 @@ const ForumChatPage = () => {
                 </li>
               ))}
             </ul>
+
+            {isRoomsLoading ? (
+              <p className="chat-status" role="status">
+                Loading rooms…
+              </p>
+            ) : null}
           </div>
         </aside>
         {!isDesktop && isSidebarOpen ? (
@@ -150,24 +577,41 @@ const ForumChatPage = () => {
           )}
           <header className="chat-header">
             <div>
-              <h2>{activeRoom.title}</h2>
-              <p>{activeRoom.description}</p>
+              <h2>{activeRoom?.title ?? 'Live chat'}</h2>
+              <p>{activeRoom?.description}</p>
             </div>
-            <span className="chat-meta">Live now</span>
+            <span className="chat-meta">{connectionLabel}</span>
           </header>
 
-          <div className="chat-stream">
-            {messages.map(message => (
-              <div key={message.id} className="chat-message">
-                <div className="chat-message__meta">
-                  <span className="author">{message.author}</span>
-                  <span className="timestamp">{message.timestamp}</span>
-                </div>
-                <p>{message.content}</p>
-              </div>
-            ))}
+          {messagesError ? (
+            <div className="chat-status chat-status--error" role="alert">
+              {messagesError}
+            </div>
+          ) : null}
 
-            {messages.length === 0 && (
+          {socketWarning && !messagesError ? (
+            <div className="chat-status chat-status--info" role="status">
+              {socketWarning}
+            </div>
+          ) : null}
+
+          <div className="chat-stream">
+            {isMessagesLoading ? (
+              <div className="empty-state">
+                <h3>Fetching the latest conversation…</h3>
+                <p>This can take a moment the first time you open a room.</p>
+              </div>
+            ) : messages.length > 0 ? (
+              messages.map(message => (
+                <div key={message.id} className="chat-message">
+                  <div className="chat-message__meta">
+                    <span className="author">{message.author}</span>
+                    <span className="timestamp">{message.timestamp}</span>
+                  </div>
+                  <p>{message.content}</p>
+                </div>
+              ))
+            ) : (
               <div className="empty-state">
                 <h3>No messages yet</h3>
                 <p>Start the conversation and invite collaborators from your thread.</p>
@@ -175,32 +619,68 @@ const ForumChatPage = () => {
             )}
           </div>
 
-          <form
-            className="chat-composer"
-            onSubmit={event => {
-              event.preventDefault();
-              if (!draft.trim()) return;
-              setMessages(prev => [
-                ...prev,
-                {
-                  id: prev.length + 1,
-                  author: 'You',
-                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                  content: draft.trim()
-                }
-              ]);
-              setDraft('');
-            }}
-          >
-            <textarea
-              placeholder="Share a quick update, resource, or question"
-              value={draft}
-              onChange={event => setDraft(event.target.value)}
-            />
-            <button type="submit" className="primary-button">
-              Send
-            </button>
-          </form>
+          {activeRoom?.source === 'api' ? (
+            token ? (
+              <form className="chat-composer" onSubmit={handleSubmit}>
+                <textarea
+                  placeholder={
+                    isSocketConnected
+                      ? 'Share a quick update, resource, or question'
+                      : 'Connecting to live chat…'
+                  }
+                  value={draft}
+                  onChange={event => setDraft(event.target.value)}
+                  disabled={!isSocketConnected || isSending}
+                />
+                <button
+                  type="submit"
+                  className="primary-button"
+                  disabled={!draft.trim() || !isSocketConnected || isSending}
+                >
+                  {isSending ? 'Sending…' : 'Send'}
+                </button>
+                {sendError ? (
+                  <p className="chat-status chat-status--error" role="alert">
+                    {sendError}
+                  </p>
+                ) : null}
+              </form>
+            ) : (
+              <div className="chat-composer chat-composer--disabled" aria-disabled="true">
+                <textarea placeholder="Sign in to join the conversation." value="" disabled />
+                <button type="button" className="primary-button" disabled>
+                  Send
+                </button>
+              </div>
+            )
+          ) : (
+            <form
+              className="chat-composer"
+              onSubmit={event => {
+                event.preventDefault();
+                if (!draft.trim()) return;
+                setMessages(prev => [
+                  ...prev,
+                  {
+                    id: prev.length + 1,
+                    author: 'You',
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    content: draft.trim(),
+                  },
+                ]);
+                setDraft('');
+              }}
+            >
+              <textarea
+                placeholder="Share a quick update, resource, or question"
+                value={draft}
+                onChange={event => setDraft(event.target.value)}
+              />
+              <button type="submit" className="primary-button">
+                Send
+              </button>
+            </form>
+          )}
         </main>
       </div>
     </section>
