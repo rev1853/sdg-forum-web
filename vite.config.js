@@ -13,6 +13,33 @@ export default defineConfig({
   server: {
     hmr: true
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react-router-dom') || id.includes('react-dom') || id.includes(`${path.sep}react${path.sep}`)) {
+              return 'react-vendor';
+            }
+
+            if (
+              id.includes('@chakra-ui') ||
+              id.includes('@emotion') ||
+              id.includes('next-themes')
+            ) {
+              return 'chakra-vendor';
+            }
+
+            if (id.includes('gsap') || id.includes(`${path.sep}ogl${path.sep}`)) {
+              return 'animation-vendor';
+            }
+          }
+
+          return undefined;
+        }
+      }
+    }
+  },
   resolve: {
     alias: {
       '@': '/src',

@@ -1,7 +1,62 @@
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { gsap } from 'gsap';
 import './FeatureCards.css';
 import CountUp from '../../../content/TextAnimations/CountUp/CountUp';
+
+const API_DOCS_URL = 'https://sdg-forum-api.truesurvi4.xyz/docs.json';
+const DASHBOARD_STATS_URL = 'https://sdg-forum-api.truesurvi4.xyz/dashboard/stats/threads-weekly';
+
+const FALLBACK_DOCS_INFO = {
+  title: 'SDG Threads API',
+  description: 'API documentation for the SDG-themed discussion platform.',
+  version: '1.0.0',
+};
+
+const FALLBACK_METRICS = {
+  pathCount: 17,
+  operationCount: 22,
+  tagCount: 7,
+  totalThreads: 110,
+  totalReplies: 150,
+  totalInteractions: 2000,
+  since: null,
+};
+
+const OPERATION_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head']);
+
+const extractDocsMetrics = (docsJson) => {
+  if (!docsJson || typeof docsJson !== 'object') return null;
+  const paths = docsJson.paths;
+  if (!paths || typeof paths !== 'object') return null;
+
+  let pathCount = 0;
+  let operationCount = 0;
+  const tagSet = new Set();
+
+  Object.keys(paths).forEach((pathKey) => {
+    const pathItem = paths[pathKey];
+    if (!pathItem || typeof pathItem !== 'object') return;
+    pathCount += 1;
+
+    Object.entries(pathItem).forEach(([method, operation]) => {
+      const methodKey = typeof method === 'string' ? method.toLowerCase() : '';
+      if (!OPERATION_METHODS.has(methodKey)) return;
+      operationCount += 1;
+      if (operation && typeof operation === 'object' && Array.isArray(operation.tags)) {
+        operation.tags
+          .filter((tag) => typeof tag === 'string' && tag.trim().length > 0)
+          .forEach((tag) => tagSet.add(tag.trim()));
+      }
+    });
+  });
+
+  return {
+    info: docsJson.info && typeof docsJson.info === 'object' ? docsJson.info : null,
+    pathCount,
+    operationCount,
+    tagCount: tagSet.size,
+  };
+};
 
 const ParticleCard = ({ children, className = '', disableAnimations = false }) => {
   const cardRef = useRef(null);
@@ -190,6 +245,10 @@ const GlobalSpotlight = ({ gridRef, disableAnimations = false }) => {
 
 const FeatureCards = () => {
   const [isMobile, setIsMobile] = useState(false);
+  const [docsMeta, setDocsMeta] = useState(() => ({ ...FALLBACK_DOCS_INFO }));
+  const [metrics, setMetrics] = useState(() => ({ ...FALLBACK_METRICS }));
+  const [isLiveData, setIsLiveData] = useState(false);
+  const [error, setError] = useState('');
   const gridRef = useRef(null);
 
   useEffect(() => {
@@ -199,9 +258,145 @@ const FeatureCards = () => {
     return () => window.removeEventListener('resize', check);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchMetrics = async () => {
+      const messages = [];
+      let live = false;
+      const docsMetaNext = { ...FALLBACK_DOCS_INFO };
+      const metricsNext = { ...FALLBACK_METRICS };
+
+      try {
+        const [docsResult, statsResult] = await Promise.allSettled([
+          fetch(API_DOCS_URL, { headers: { Accept: 'application/json' } }),
+          fetch(DASHBOARD_STATS_URL, { headers: { Accept: 'application/json' } }),
+        ]);
+
+        if (docsResult.status === 'fulfilled') {
+          if (docsResult.value.ok) {
+            const docsJson = await docsResult.value.json();
+            const docsMetrics = extractDocsMetrics(docsJson);
+            if (docsMetrics) {
+              if (docsMetrics.info && typeof docsMetrics.info === 'object') {
+                Object.assign(docsMetaNext, docsMetrics.info);
+              }
+              if (typeof docsMetrics.pathCount === 'number' && docsMetrics.pathCount >= 0) {
+                metricsNext.pathCount = docsMetrics.pathCount;
+              }
+              if (typeof docsMetrics.operationCount === 'number' && docsMetrics.operationCount >= 0) {
+                metricsNext.operationCount = docsMetrics.operationCount;
+              }
+              if (typeof docsMetrics.tagCount === 'number' && docsMetrics.tagCount >= 0) {
+                metricsNext.tagCount = docsMetrics.tagCount;
+              }
+            } else {
+              messages.push('API docs responded without the expected structure. Showing cached metrics.');
+            }
+          } else {
+            messages.push('Unable to read the SDG Forum API documentation. Showing cached metrics.');
+          }
+        } else {
+          messages.push('Unable to reach the SDG Forum API documentation. Showing cached metrics.');
+        }
+
+        if (statsResult.status === 'fulfilled') {
+          if (statsResult.value.ok) {
+            const statsJson = await statsResult.value.json();
+            const stats = statsJson && typeof statsJson === 'object' ? statsJson.stats : null;
+            if (stats && typeof stats === 'object') {
+              if (typeof stats.totalThreads === 'number') {
+                metricsNext.totalThreads = stats.totalThreads;
+              }
+              if (typeof stats.totalReplies === 'number') {
+                metricsNext.totalReplies = stats.totalReplies;
+              }
+              if (typeof stats.totalInteractions === 'number') {
+                metricsNext.totalInteractions = stats.totalInteractions;
+              }
+              if (typeof stats.since === 'string') {
+                metricsNext.since = stats.since;
+              }
+              live = true;
+            } else {
+              messages.push('Dashboard stats returned an unexpected shape.');
+            }
+          } else {
+            messages.push('Dashboard metrics are temporarily unavailable. Showing cached values instead.');
+          }
+        } else {
+          messages.push('Unable to reach dashboard metrics. Showing cached values instead.');
+        }
+      } catch (caughtError) {
+        const fallbackMessage =
+          caughtError instanceof Error
+            ? caughtError.message
+            : 'Unexpected error while connecting to the SDG Forum API.';
+        messages.length = 0;
+        messages.push(fallbackMessage);
+        live = false;
+      }
+
+      if (!cancelled) {
+        setDocsMeta(docsMetaNext);
+        setMetrics(metricsNext);
+        setIsLiveData(live);
+        setError(messages.join(' '));
+      }
+    };
+
+    fetchMetrics();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const sinceLabel = useMemo(() => {
+    if (!metrics.since) return 'the past 7 days';
+    const parsed = Date.parse(metrics.since);
+    if (Number.isNaN(parsed)) return 'the past 7 days';
+    try {
+      return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(parsed));
+    } catch {
+      return 'the past 7 days';
+    }
+  }, [metrics.since]);
+
+  const docsDescription = useMemo(() => {
+    const description =
+      typeof docsMeta.description === 'string' && docsMeta.description.trim().length > 0
+        ? docsMeta.description.trim()
+        : FALLBACK_DOCS_INFO.description;
+    const facets = [];
+    if (typeof metrics.tagCount === 'number' && metrics.tagCount > 0) {
+      facets.push(`${metrics.tagCount} feature areas`);
+    }
+    if (typeof metrics.pathCount === 'number' && metrics.pathCount > 0) {
+      facets.push(`${metrics.pathCount} routes`);
+    }
+    return `${description}${facets.length ? ` (${facets.join(' • ')})` : ''}`;
+  }, [docsMeta.description, metrics.tagCount, metrics.pathCount]);
+
+  const statusClass = error
+    ? 'features-status features-status--error'
+    : isLiveData
+      ? 'features-status features-status--live'
+      : 'features-status features-status--fallback';
+
+  const statusMessage = error
+    ? error
+    : isLiveData
+      ? 'Live SDG Forum metrics'
+      : 'Showing cached SDG Forum metrics';
+
   return (
     <div className="features-section">
       <div className="features-container">
+        <div className={statusClass} aria-live="polite">
+          <span className="features-status__dot" aria-hidden="true" />
+          <span>{statusMessage}</span>
+        </div>
         <GlobalSpotlight gridRef={gridRef} disableAnimations={isMobile} />
 
         <div className="bento-grid" ref={gridRef}>
@@ -209,27 +404,35 @@ const FeatureCards = () => {
             <div className="messages-gif-wrapper">
               <img src="/assets/messages.gif" alt="Messages animation" className="messages-gif" />
             </div>
-            <h2>{isMobile ? '100' : <CountUp to={100} />}%</h2>
-            <h3>Free Platform</h3>
-            <p>Free Thread Platform for Everyone</p>
+            <h2>
+              {isMobile ? metrics.operationCount.toLocaleString() : <CountUp to={metrics.operationCount} separator="," />}
+            </h2>
+            <h3>{`SDG Threads API v${(docsMeta.version ?? FALLBACK_DOCS_INFO.version) || '1.0.0'}`}</h3>
+            <p>{docsDescription}</p>
           </ParticleCard>
 
           <ParticleCard className="feature-card card2" disableAnimations={isMobile}>
             <div className="components-gif-wrapper">
               <img src="/assets/components.gif" alt="Components animation" className="components-gif" />
             </div>
-            <h2>{isMobile ? '110' : <CountUp to={110} />}+</h2>
-            <h3>active threads this week</h3>
-            <p>Growing weekly &amp; only getting better</p>
+            <h2>
+              {isMobile ? metrics.totalThreads.toLocaleString() : <CountUp to={metrics.totalThreads} separator="," />}
+            </h2>
+            <h3>Threads created this week</h3>
+            <p>{`Activity tracked since ${sinceLabel}.`}</p>
           </ParticleCard>
 
           <ParticleCard className="feature-card card4" disableAnimations={isMobile}>
             <div className="switch-gif-wrapper">
               <img src="/assets/switch.gif" alt="Switch animation" className="switch-gif" />
             </div>
-            <h2>{isMobile ? '4' : <CountUp to={4} />}</h2>
-            <h3>Collaborate, not just comment. Turn ideas into pilots, pilots into impact.</h3>
-            <p>Evidence first. Share datasets, references, and field notes to level-up conversations.</p>
+            <h2>
+              {isMobile
+                ? metrics.totalInteractions.toLocaleString()
+                : <CountUp to={metrics.totalInteractions} separator="," />}
+            </h2>
+            <h3>Community interactions logged</h3>
+            <p>{`Includes ${metrics.totalReplies.toLocaleString()} replies plus reactions across the forum.`}</p>
           </ParticleCard>
         </div>
       </div>

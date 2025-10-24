@@ -53,6 +53,7 @@ export interface ThreadListQuery extends PaginatedQuery {
   tags?: string | string[];
   categories?: string | string[];
   search?: string;
+  [key: string]: string | number | boolean | string[] | null | undefined;
 }
 
 export interface ThreadListResponse extends PaginatedResponse<ThreadSummary> {}

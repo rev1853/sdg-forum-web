@@ -1,5 +1,9 @@
 const FALLBACK_API_BASE_URL = 'https://sdg-forum-api.truesurvi4.xyz';
 
+type QueryPrimitive = string | number | boolean | null | undefined;
+type QueryValue = QueryPrimitive | QueryPrimitive[];
+export type QueryParams = Record<string, QueryValue>;
+
 const sanitizeBaseUrl = (value: string | undefined | null): string | null => {
     if (!value) return null;
     const trimmed = value.trim();
@@ -32,8 +36,7 @@ export interface ApiClientOptions {
 
 export interface ApiRequestConfig<
     TBody = unknown,
-    TQuery extends Record<string, string | number | boolean | undefined> | undefined =
-    Record<string, string | number | boolean | undefined>,
+    TQuery extends QueryParams | undefined = QueryParams,
 > {
     path: string;
     method?: HttpMethod;
@@ -70,14 +73,21 @@ const isFormData = (value: unknown): value is FormData => value instanceof FormD
 const buildUrl = (
     baseUrl: string,
     path: string,
-    query?: Record<string, string | number | boolean | undefined>,
+    query?: QueryParams,
 ): string => {
     const url = new URL(path, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
 
     if (query) {
         Object.entries(query).forEach(([key, rawValue]) => {
             if (rawValue === undefined || rawValue === null) return;
-            url.searchParams.set(key, String(rawValue));
+            if (Array.isArray(rawValue)) {
+                rawValue.forEach((item) => {
+                    if (item === undefined || item === null) return;
+                    url.searchParams.append(key, String(item));
+                });
+            } else {
+                url.searchParams.set(key, String(rawValue));
+            }
         });
     }
 
@@ -121,7 +131,9 @@ const readErrorPayload = async (response: Response): Promise<unknown> => {
 export const createApiClient = (options: ApiClientOptions = {}): ApiClient => {
     const baseUrl = sanitizeBaseUrl(options.baseUrl) ?? DEFAULT_API_BASE_URL;
 
-    const request: ApiClient['request'] = async (config) => {
+    const request = async <TResponse = unknown, TBody = unknown>(
+        config: ApiRequestConfig<TBody>,
+    ): Promise<TResponse> => {
         const {
             method = 'GET',
             path,
@@ -156,7 +168,7 @@ export const createApiClient = (options: ApiClientOptions = {}): ApiClient => {
         }
 
         const response = await fetch(
-            buildUrl(baseUrl, path, query as Record<string, string | number | boolean | undefined>),
+            buildUrl(baseUrl, path, query as QueryParams),
             {
                 method,
                 headers,
@@ -179,7 +191,7 @@ export const createApiClient = (options: ApiClientOptions = {}): ApiClient => {
             );
         }
 
-        return (await parseResponseBody(response)) as TResponse;
+        return (await parseResponseBody<TResponse>(response)) as TResponse;
     };
 
     return {

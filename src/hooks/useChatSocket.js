@@ -21,7 +21,9 @@ const resolveSocketUrl = (value) => {
 const normalizeToken = (token) => {
   if (!token) return undefined;
   if (typeof token !== 'string') return undefined;
-  return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+  const trimmed = token.trim();
+  if (!trimmed) return undefined;
+  return trimmed.replace(/^Bearer\s+/i, '');
 };
 
 const createSocket = ({ baseUrl, token }) => {
@@ -31,7 +33,6 @@ const createSocket = ({ baseUrl, token }) => {
   return io(baseUrl, {
     auth,
     autoConnect: false,
-    transports: ['websocket', 'polling'],
   });
 };
 
