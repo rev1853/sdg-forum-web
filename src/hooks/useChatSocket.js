@@ -3,9 +3,9 @@ import { io } from 'socket.io-client';
 
 import { DEFAULT_API_BASE_URL } from '@/api/client';
 
-const MESSAGE_EVENT_NAMES = ['chat:message:new', 'chat:message:created', 'chat:message'];
+const MESSAGE_EVENT_NAMES = ['chat:new-message', 'chat:message:new', 'chat:message:created', 'chat:message'];
 const MESSAGE_REMOVAL_EVENT_NAMES = ['chat:message:deleted', 'chat:message:removed'];
-const DEFAULT_SEND_EVENTS = ['chat:message:send', 'chat:message:create', 'chat:message'];
+const DEFAULT_SEND_EVENTS = ['chat:send', 'chat:message:send', 'chat:message:create', 'chat:message'];
 
 const resolveSocketUrl = (value) => {
   try {
@@ -18,16 +18,33 @@ const resolveSocketUrl = (value) => {
   }
 };
 
-const createSocket = ({ baseUrl, token }) =>
-  io(baseUrl, {
-    auth: { token },
+const normalizeToken = (token) => {
+  if (!token) return undefined;
+  if (typeof token !== 'string') return undefined;
+  return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+};
+
+const createSocket = ({ baseUrl, token }) => {
+  const preparedToken = normalizeToken(token);
+  const auth = preparedToken ? { token: preparedToken } : undefined;
+
+  return io(baseUrl, {
+    auth,
     autoConnect: false,
     transports: ['websocket', 'polling'],
   });
+};
 
 const emitWithAck = async (socket, event, payload) => {
   try {
     const response = await socket.timeout(5000).emitWithAck(event, payload);
+    const isErrorResponse = response && typeof response === 'object' && response.status === 'error';
+    if (isErrorResponse) {
+      const error = new Error(response.message ?? 'Socket operation failed');
+      error.code = response.code;
+      return { ok: false, error, response };
+    }
+
     return { ok: true, response };
   } catch (error) {
     return { ok: false, error };
@@ -180,7 +197,7 @@ export const useChatSocket = ({
       let lastFailure = null;
 
       for (const event of sendEventVariants) {
-        const payload = { groupId, content: trimmed };
+        const payload = { groupId, body: trimmed, content: trimmed };
         const result = await emitWithAck(socket, event, payload);
 
         if (result.ok) {

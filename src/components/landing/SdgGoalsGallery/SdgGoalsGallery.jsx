@@ -123,5 +123,5 @@ export default SdgGoalsGallery;
           delay={45}
           duration={0.55}
         />
-        <span className="sdg-gallery-badge">17 Global Goals</span>
+        {/* <span className="sdg-gallery-badge">17 Global Goals</span> */}
       </div>

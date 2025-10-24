@@ -77,6 +77,9 @@ const FALLBACK_ROOMS = [
   },
 ];
 
+const MESSAGE_CHARACTER_LIMIT = 2000;
+const SCROLL_THRESHOLD_PX = 120;
+
 const generateFallbackId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -115,26 +118,135 @@ const formatTimestamp = (value) => {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-const mapApiMessage = (message) => {
+const extractUserName = (candidate) => {
+  if (!candidate || typeof candidate === 'number') return undefined;
+  if (typeof candidate === 'string') return candidate;
+  if (typeof candidate === 'object') {
+    return (
+      candidate.name ??
+      candidate.username ??
+      candidate.displayName ??
+      candidate.fullName ??
+      candidate.handle ??
+      undefined
+    );
+  }
+  return undefined;
+};
+
+const extractUserId = (candidate, fallback) => {
+  if (!candidate) return fallback;
+  if (typeof candidate === 'object') {
+    return (
+      candidate.id ??
+      candidate.userId ??
+      candidate.user_id ??
+      candidate.senderId ??
+      candidate.sender_id ??
+      candidate.authorId ??
+      candidate.author_id ??
+      fallback ??
+      null
+    );
+  }
+  return fallback ?? null;
+};
+
+const mapApiMessage = (input, options = {}) => {
+  const message = input?.message ?? input;
   if (!message || typeof message !== 'object') return null;
-  const rawTimestamp = message.created_at ?? message.createdAt ?? message.timestamp ?? message.sentAt;
-  const author =
-    message.sender?.name ??
-    message.sender?.username ??
-    message.author?.name ??
-    message.author?.username ??
-    message.user?.name ??
-    message.user?.username ??
+
+  const targetGroupId = getMessageGroupId(message) ?? options.groupId ?? null;
+
+  const rawAuthorObject =
+    message.user ?? message.sender ?? message.author ?? (typeof message.author === 'object' ? message.author : null);
+
+  const authorName =
+    extractUserName(rawAuthorObject) ??
+    (typeof message.author === 'string' ? message.author : undefined) ??
+    extractUserName(message.profile) ??
     'Participant';
 
-  const content = message.content ?? message.body ?? message.text ?? '';
-  if (!content) return null;
+  const authorId =
+    message.user_id ??
+    message.userId ??
+    message.sender_id ??
+    message.senderId ??
+    message.author_id ??
+    message.authorId ??
+    extractUserId(rawAuthorObject, options.fallbackAuthorId ?? null);
+
+  const rawTimestamp =
+    message.created_at ?? message.createdAt ?? message.sent_at ?? message.sentAt ?? message.timestamp ?? null;
+
+  let createdAtMs = null;
+  let displayTimestamp = typeof message.timestamp === 'string' ? message.timestamp : '';
+  let isoTimestamp = null;
+
+  if (rawTimestamp) {
+    const parsed = new Date(rawTimestamp);
+    if (!Number.isNaN(parsed.getTime())) {
+      createdAtMs = parsed.getTime();
+      isoTimestamp = parsed.toISOString();
+      displayTimestamp = formatTimestamp(parsed.toISOString()) ?? displayTimestamp;
+    }
+  }
+
+  if (createdAtMs === null) {
+    createdAtMs = Date.now();
+    isoTimestamp = new Date(createdAtMs).toISOString();
+  }
+
+  if (!displayTimestamp) {
+    displayTimestamp = formatTimestamp(isoTimestamp) ?? '';
+  }
+
+  const content =
+    message.body ??
+    message.content ??
+    message.text ??
+    message.message ??
+    (typeof message === 'string' ? message : '');
+
+  const normalizedContent = String(content).trim();
+  if (!normalizedContent) {
+    return null;
+  }
+
+  const replySource = message.reply_to ?? message.replyTo ?? message.reply ?? null;
+  let reply = null;
+
+  if (replySource && typeof replySource === 'object') {
+    const replyAuthorObject = replySource.user ?? replySource.author ?? replySource.sender ?? null;
+    reply = {
+      id: replySource.id ?? null,
+      author: extractUserName(replyAuthorObject) ?? (typeof replySource.author === 'string' ? replySource.author : 'Unknown'),
+      content: replySource.body ?? replySource.content ?? replySource.text ?? '',
+    };
+
+    if (!reply.content) {
+      reply = null;
+    }
+  }
+
+  const identifier =
+    message.id ??
+    message.messageId ??
+    message.message_id ??
+    message.uuid ??
+    message._id ??
+    generateFallbackId();
 
   return {
-    id: message.id ?? `${rawTimestamp ?? Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    author,
-    timestamp: message.timestamp ?? formatTimestamp(rawTimestamp) ?? '',
-    content,
+    id: identifier,
+    groupId: targetGroupId,
+    author: authorName,
+    authorId,
+    timestamp: displayTimestamp,
+    createdAt: isoTimestamp,
+    createdAtMs,
+    content: normalizedContent,
+    reply,
   };
 };
 
@@ -165,7 +277,7 @@ const isDesktopMatch = () => {
 
 const ForumChatPage = () => {
   const { chat, baseUrl } = useApi();
-  const { token } = useAuth();
+  const { user, token } = useAuth();
   const [rooms, setRooms] = useState([]);
   const [activeRoomId, setActiveRoomId] = useState(null);
   const [draft, setDraft] = useState('');
@@ -180,6 +292,7 @@ const ForumChatPage = () => {
   const [isDesktop, setIsDesktop] = useState(() => isDesktopMatch());
   const [socketWarning, setSocketWarning] = useState('');
   const socketRoomRef = useRef(null);
+  const streamRef = useRef(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -248,14 +361,17 @@ const ForumChatPage = () => {
       if (!activeRoom || activeRoom.source !== 'api') return;
       if (targetGroupId !== activeRoom.id) return;
 
-      const mapped = mapApiMessage(payload?.message ?? payload);
+      const mapped = mapApiMessage(payload?.message ?? payload, { groupId: activeRoom.id });
       if (!mapped) return;
 
       setMessages((prev) => {
         if (prev.some((message) => message.id === mapped.id)) {
           return prev;
         }
-        return [...prev, mapped];
+
+        const next = [...prev, mapped];
+        next.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
+        return next;
       });
     },
     [activeRoom],
@@ -307,7 +423,15 @@ const ForumChatPage = () => {
       }
 
       if (room.source !== 'api') {
-        setMessages(room.messages ?? []);
+        const fallbackMessages = Array.isArray(room.messages)
+          ? room.messages
+              .map((item) => mapApiMessage(item, { groupId: room.id, fallbackAuthorId: item?.authorId }))
+              .filter(Boolean)
+          : [];
+
+        fallbackMessages.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
+
+        setMessages(fallbackMessages);
         setMessagesError('');
         return;
       }
@@ -328,7 +452,11 @@ const ForumChatPage = () => {
           (response && 'messages' in response ? response.messages : undefined) ??
           (response && Array.isArray(response?.data) ? response.data : undefined) ??
           [];
-        const mappedMessages = Array.isArray(payload) ? payload.map(mapApiMessage).filter(Boolean) : [];
+        const mappedMessages = Array.isArray(payload)
+          ? payload.map((item) => mapApiMessage(item, { groupId: room.id })).filter(Boolean)
+          : [];
+
+        mappedMessages.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
         setMessages(mappedMessages);
       } catch (error) {
         console.error('Failed to load chat messages', error);
@@ -344,6 +472,25 @@ const ForumChatPage = () => {
   useEffect(() => {
     loadMessages(activeRoom);
   }, [activeRoom, loadMessages]);
+
+  useEffect(() => {
+    const node = streamRef.current;
+    if (!node) return;
+
+    requestAnimationFrame(() => {
+      node.scrollTo({ top: node.scrollHeight, behavior: 'auto' });
+    });
+  }, [activeRoom?.id]);
+
+  useEffect(() => {
+    const node = streamRef.current;
+    if (!node) return;
+
+    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    if (distanceFromBottom <= SCROLL_THRESHOLD_PX) {
+      node.scrollTo({ top: node.scrollHeight, behavior: messages.length > 1 ? 'smooth' : 'auto' });
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (!activeRoom || activeRoom.source !== 'api' || !token) {
@@ -440,6 +587,23 @@ const ForumChatPage = () => {
     return 'Idle';
   }, [activeRoom, socketStatus, socketWarning, token]);
 
+  const trimmedDraft = draft.trim();
+  const charactersRemaining = MESSAGE_CHARACTER_LIMIT - trimmedDraft.length;
+  const isOverLimit = charactersRemaining < 0;
+  const isNearLimit = !isOverLimit && charactersRemaining <= 50;
+  const counterClassName = [
+    'chat-composer__counter',
+    isOverLimit ? 'is-error' : '',
+    isNearLimit ? 'is-warning' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const counterText = trimmedDraft
+    ? isOverLimit
+      ? `${Math.abs(charactersRemaining)} over the limit`
+      : `${charactersRemaining} characters left`
+    : `${MESSAGE_CHARACTER_LIMIT} characters max`;
+
   const sidebarId = 'chat-sidebar-panel';
   const sidebarStyle = !isDesktop && !isSidebarOpen ? { display: 'none' } : undefined;
   const sidebarClassName = [
@@ -452,18 +616,33 @@ const ForumChatPage = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!draft.trim() || !activeRoom) return;
+    const normalizedContent = draft.trim();
+    if (!normalizedContent || !activeRoom) return;
+
+    if (normalizedContent.length > MESSAGE_CHARACTER_LIMIT) {
+      setSendError(`Messages are limited to ${MESSAGE_CHARACTER_LIMIT} characters.`);
+      return;
+    }
 
     if (activeRoom.source !== 'api') {
-      setMessages(prev => [
-        ...prev,
+      const fallbackMessage = mapApiMessage(
         {
-          id: prev.length + 1,
+          id: generateFallbackId(),
           author: 'You',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          content: draft.trim(),
+          body: normalizedContent,
+          created_at: new Date().toISOString(),
+          group_id: activeRoom.id,
         },
-      ]);
+        { groupId: activeRoom.id, fallbackAuthorId: user?.id ?? 'local-user' },
+      );
+
+      if (fallbackMessage) {
+        setMessages(prev => {
+          const next = [...prev, fallbackMessage];
+          next.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
+          return next;
+        });
+      }
       setDraft('');
       return;
     }
@@ -482,7 +661,7 @@ const ForumChatPage = () => {
     setSendError('');
 
     try {
-      const result = await socketSendMessage({ groupId: activeRoom.id, content: draft.trim() });
+      const result = await socketSendMessage({ groupId: activeRoom.id, content: normalizedContent });
       setDraft('');
       if (!result || result?.status !== 'pending') {
         await loadMessages(activeRoom);
@@ -595,22 +774,37 @@ const ForumChatPage = () => {
             </div>
           ) : null}
 
-          <div className="chat-stream">
+          <div className="chat-stream" ref={streamRef}>
             {isMessagesLoading ? (
               <div className="empty-state">
                 <h3>Fetching the latest conversation…</h3>
                 <p>This can take a moment the first time you open a room.</p>
               </div>
             ) : messages.length > 0 ? (
-              messages.map(message => (
-                <div key={message.id} className="chat-message">
-                  <div className="chat-message__meta">
-                    <span className="author">{message.author}</span>
-                    <span className="timestamp">{message.timestamp}</span>
+              messages.map((message) => {
+                const isOwnMessage = Boolean(user?.id && message.authorId && message.authorId === user.id);
+                const messageClassName = ['chat-message', isOwnMessage ? 'chat-message--self' : '']
+                  .filter(Boolean)
+                  .join(' ');
+
+                return (
+                  <div key={message.id} className={messageClassName} data-message-id={message.id}>
+                    <div className="chat-message__meta">
+                      <span className="author">{isOwnMessage ? 'You' : message.author}</span>
+                      {message.timestamp ? (
+                        <span className="timestamp">{message.timestamp}</span>
+                      ) : null}
+                    </div>
+                    {message.reply ? (
+                      <div className="chat-message__reply">
+                        <span className="chat-message__reply-author">{message.reply.author}</span>
+                        {message.reply.content ? <p>{message.reply.content}</p> : null}
+                      </div>
+                    ) : null}
+                    <p>{message.content}</p>
                   </div>
-                  <p>{message.content}</p>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="empty-state">
                 <h3>No messages yet</h3>
@@ -630,15 +824,20 @@ const ForumChatPage = () => {
                   }
                   value={draft}
                   onChange={event => setDraft(event.target.value)}
+                  onFocus={() => setSendError('')}
                   disabled={!isSocketConnected || isSending}
+                  maxLength={MESSAGE_CHARACTER_LIMIT}
                 />
-                <button
-                  type="submit"
-                  className="primary-button"
-                  disabled={!draft.trim() || !isSocketConnected || isSending}
-                >
-                  {isSending ? 'Sending…' : 'Send'}
-                </button>
+                <div className="chat-composer__footer">
+                  <span className={counterClassName}>{counterText}</span>
+                  <button
+                    type="submit"
+                    className="primary-button"
+                    disabled={!trimmedDraft || !isSocketConnected || isSending || isOverLimit}
+                  >
+                    {isSending ? 'Sending…' : 'Send'}
+                  </button>
+                </div>
                 {sendError ? (
                   <p className="chat-status chat-status--error" role="alert">
                     {sendError}
@@ -648,9 +847,12 @@ const ForumChatPage = () => {
             ) : (
               <div className="chat-composer chat-composer--disabled" aria-disabled="true">
                 <textarea placeholder="Sign in to join the conversation." value="" disabled />
-                <button type="button" className="primary-button" disabled>
-                  Send
-                </button>
+                <div className="chat-composer__footer">
+                  <span className="chat-composer__counter">{MESSAGE_CHARACTER_LIMIT} characters max</span>
+                  <button type="button" className="primary-button" disabled>
+                    Send
+                  </button>
+                </div>
               </div>
             )
           ) : (
@@ -658,16 +860,27 @@ const ForumChatPage = () => {
               className="chat-composer"
               onSubmit={event => {
                 event.preventDefault();
-                if (!draft.trim()) return;
-                setMessages(prev => [
-                  ...prev,
+                const normalizedContent = draft.trim();
+                if (!normalizedContent) return;
+
+                const fallbackMessage = mapApiMessage(
                   {
-                    id: prev.length + 1,
+                    id: generateFallbackId(),
                     author: 'You',
-                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    content: draft.trim(),
+                    body: normalizedContent,
+                    created_at: new Date().toISOString(),
+                    group_id: activeRoom?.id,
                   },
-                ]);
+                  { groupId: activeRoom?.id ?? null, fallbackAuthorId: user?.id ?? 'local-user' },
+                );
+
+                if (fallbackMessage) {
+                  setMessages(prev => {
+                    const next = [...prev, fallbackMessage];
+                    next.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
+                    return next;
+                  });
+                }
                 setDraft('');
               }}
             >
@@ -675,10 +888,14 @@ const ForumChatPage = () => {
                 placeholder="Share a quick update, resource, or question"
                 value={draft}
                 onChange={event => setDraft(event.target.value)}
+                maxLength={MESSAGE_CHARACTER_LIMIT}
               />
-              <button type="submit" className="primary-button">
-                Send
-              </button>
+              <div className="chat-composer__footer">
+                <span className={counterClassName}>{counterText}</span>
+                <button type="submit" className="primary-button" disabled={!trimmedDraft}>
+                  Send
+                </button>
+              </div>
             </form>
           )}
         </main>
