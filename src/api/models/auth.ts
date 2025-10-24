@@ -57,6 +57,10 @@ export interface AuthUser {
   email?: string;
   username?: string;
   name?: string;
+  profilePicture?: string | null;
+  profile_picture?: string | null;
+  googlePicture?: string | null;
+  google_picture?: string | null;
   [key: string]: unknown;
 }
 

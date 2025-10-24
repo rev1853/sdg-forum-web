@@ -54,8 +54,54 @@ export const AuthProvider = ({ children }) => {
         }
     }, [token]);
 
+    useEffect(() => {
+        if (!token || !user?.id) {
+            return;
+        }
+
+        const hasProfileImage = Boolean(
+            user.profilePicture ||
+                user.profile_picture ||
+                user.googlePicture ||
+                user.google_picture,
+        );
+
+        if (hasProfileImage) {
+            return;
+        }
+
+        let cancelled = false;
+
+        const fetchDetails = async () => {
+            try {
+                const detail = await users.getUser(user.id);
+                const enriched = detail?.user ?? null;
+                if (!cancelled && enriched) {
+                    setUser(enriched);
+                    persistUser(enriched);
+                }
+            } catch (error) {
+                console.warn('Failed to fetch user details for profile enrichment', error);
+            }
+        };
+
+        fetchDetails();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        token,
+        user?.id,
+        user?.profilePicture,
+        user?.profile_picture,
+        user?.googlePicture,
+        user?.google_picture,
+        users,
+    ]);
+
     const applyAuthentication = useCallback(
-        response => {
+        async response => {
             if (!response) {
                 throw new Error('Unexpected empty response from the API.');
             }
@@ -71,16 +117,28 @@ export const AuthProvider = ({ children }) => {
                 throw new Error('Authentication succeeded but no access token was returned.');
             }
 
-            const nextUser = response.user ?? null;
+            let nextUser = response.user ?? null;
 
             storeToken(issuedToken);
             setToken(issuedToken);
+
+            if (nextUser?.id) {
+                try {
+                    const detail = await users.getUser(nextUser.id);
+                    if (detail?.user) {
+                        nextUser = { ...nextUser, ...detail.user };
+                    }
+                } catch (error) {
+                    console.warn('Failed to refresh user profile after login', error);
+                }
+            }
+
             setUser(nextUser);
             persistUser(nextUser);
 
             return nextUser;
         },
-        [setToken]
+        [setToken, users]
     );
 
     const login = useCallback(
