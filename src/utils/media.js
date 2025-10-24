@@ -11,6 +11,8 @@ const PROFILE_IMAGE_KEYS = [
   'avatar',
   'avatar_url',
   'avatarUrl',
+  'google_picture',
+  'googlePicture',
   'photo',
   'photo_url',
   'photoUrl',

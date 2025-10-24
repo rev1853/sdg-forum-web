@@ -17,22 +17,23 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('react-router-dom') || id.includes('react-dom') || id.includes(`${path.sep}react${path.sep}`)) {
-              return 'react-vendor';
-            }
+          if (!id.includes('node_modules')) {
+            return undefined;
+          }
 
-            if (
-              id.includes('@chakra-ui') ||
-              id.includes('@emotion') ||
-              id.includes('next-themes')
-            ) {
-              return 'chakra-vendor';
-            }
+          if (
+            id.includes('react-router-dom') ||
+            id.includes('react-dom') ||
+            id.includes(`${path.sep}react${path.sep}`) ||
+            id.includes('@chakra-ui') ||
+            id.includes('@emotion') ||
+            id.includes('next-themes')
+          ) {
+            return 'ui-vendor';
+          }
 
-            if (id.includes('gsap') || id.includes(`${path.sep}ogl${path.sep}`)) {
-              return 'animation-vendor';
-            }
+          if (id.includes('gsap') || id.includes(`${path.sep}ogl${path.sep}`)) {
+            return 'animation-vendor';
           }
 
           return undefined;

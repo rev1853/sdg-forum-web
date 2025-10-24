@@ -3,6 +3,7 @@ import ForumNavbar from '../../components/forum/ForumNavbar';
 import { useApi } from '@/api';
 import { useAuth } from '../../context/AuthContext';
 import useChatSocket from '@/hooks/useChatSocket';
+import { resolveProfileImageUrl } from '@/utils/media';
 
 const FALLBACK_ROOMS = [
   {
@@ -87,6 +88,20 @@ const generateFallbackId = () => {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
+const deriveInitials = (value) => {
+  if (!value || typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const segments = trimmed.split(/\s+/).filter(Boolean);
+  if (segments.length === 0) return '';
+  if (segments.length === 1) {
+    return segments[0].slice(0, 2).toUpperCase();
+  }
+  const first = segments[0][0] ?? '';
+  const last = segments[segments.length - 1][0] ?? '';
+  return `${first}${last}`.toUpperCase();
+};
+
 const mapApiGroupToRoom = (group) => {
   if (!group || typeof group !== 'object') {
     return null;
@@ -157,6 +172,7 @@ const mapApiMessage = (input, options = {}) => {
   if (!message || typeof message !== 'object') return null;
 
   const targetGroupId = getMessageGroupId(message) ?? options.groupId ?? null;
+  const { baseUrl: apiBaseUrl } = options;
 
   const rawAuthorObject =
     message.user ?? message.sender ?? message.author ?? (typeof message.author === 'object' ? message.author : null);
@@ -175,6 +191,26 @@ const mapApiMessage = (input, options = {}) => {
     message.author_id ??
     message.authorId ??
     extractUserId(rawAuthorObject, options.fallbackAuthorId ?? null);
+
+  const avatarCandidates = [
+    rawAuthorObject,
+    message.profile,
+    message.user_profile,
+    message.author_profile,
+    message,
+  ];
+
+  let authorAvatar = null;
+  for (const candidate of avatarCandidates) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const resolved = resolveProfileImageUrl(candidate, apiBaseUrl);
+    if (resolved) {
+      authorAvatar = resolved;
+      break;
+    }
+  }
+
+  const authorInitials = deriveInitials(authorName);
 
   const rawTimestamp =
     message.created_at ?? message.createdAt ?? message.sent_at ?? message.sentAt ?? message.timestamp ?? null;
@@ -247,6 +283,8 @@ const mapApiMessage = (input, options = {}) => {
     createdAtMs,
     content: normalizedContent,
     reply,
+    avatar: authorAvatar,
+    initials: authorInitials || (typeof authorName === 'string' ? authorName.slice(0, 1).toUpperCase() : ''),
   };
 };
 
@@ -361,7 +399,7 @@ const ForumChatPage = () => {
       if (!activeRoom || activeRoom.source !== 'api') return;
       if (targetGroupId !== activeRoom.id) return;
 
-      const mapped = mapApiMessage(payload?.message ?? payload, { groupId: activeRoom.id });
+      const mapped = mapApiMessage(payload?.message ?? payload, { groupId: activeRoom.id, baseUrl });
       if (!mapped) return;
 
       setMessages((prev) => {
@@ -374,7 +412,7 @@ const ForumChatPage = () => {
         return next;
       });
     },
-    [activeRoom],
+    [activeRoom, baseUrl],
   );
 
   const handleRemovedMessage = useCallback(
@@ -425,7 +463,9 @@ const ForumChatPage = () => {
       if (room.source !== 'api') {
         const fallbackMessages = Array.isArray(room.messages)
           ? room.messages
-              .map((item) => mapApiMessage(item, { groupId: room.id, fallbackAuthorId: item?.authorId }))
+              .map((item) =>
+                mapApiMessage(item, { groupId: room.id, fallbackAuthorId: item?.authorId, baseUrl }),
+              )
               .filter(Boolean)
           : [];
 
@@ -453,7 +493,7 @@ const ForumChatPage = () => {
           (response && Array.isArray(response?.data) ? response.data : undefined) ??
           [];
         const mappedMessages = Array.isArray(payload)
-          ? payload.map((item) => mapApiMessage(item, { groupId: room.id })).filter(Boolean)
+          ? payload.map((item) => mapApiMessage(item, { groupId: room.id, baseUrl })).filter(Boolean)
           : [];
 
         mappedMessages.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
@@ -466,7 +506,7 @@ const ForumChatPage = () => {
         setIsMessagesLoading(false);
       }
     },
-    [chat, token],
+    [chat, token, baseUrl],
   );
 
   useEffect(() => {
@@ -628,12 +668,14 @@ const ForumChatPage = () => {
       const fallbackMessage = mapApiMessage(
         {
           id: generateFallbackId(),
-          author: 'You',
+          author: user?.name ?? user?.username ?? 'You',
+          user,
+          user_id: user?.id ?? null,
           body: normalizedContent,
           created_at: new Date().toISOString(),
           group_id: activeRoom.id,
         },
-        { groupId: activeRoom.id, fallbackAuthorId: user?.id ?? 'local-user' },
+        { groupId: activeRoom.id, fallbackAuthorId: user?.id ?? 'local-user', baseUrl },
       );
 
       if (fallbackMessage) {
@@ -786,22 +828,40 @@ const ForumChatPage = () => {
                 const messageClassName = ['chat-message', isOwnMessage ? 'chat-message--self' : '']
                   .filter(Boolean)
                   .join(' ');
+                const authorLabel = isOwnMessage ? 'You' : message.author ?? 'Participant';
+                const initialsSource =
+                  message.initials && typeof message.initials === 'string' && message.initials.trim()
+                    ? message.initials.trim()
+                    : deriveInitials(authorLabel) || (authorLabel ? authorLabel.slice(0, 1).toUpperCase() : '?');
+                const displayInitials = initialsSource.slice(0, 2);
+                const avatarAlt = isOwnMessage
+                  ? 'Your profile picture'
+                  : `${message.author ?? 'Participant'}'s profile picture`;
 
                 return (
                   <div key={message.id} className={messageClassName} data-message-id={message.id}>
-                    <div className="chat-message__meta">
-                      <span className="author">{isOwnMessage ? 'You' : message.author}</span>
-                      {message.timestamp ? (
-                        <span className="timestamp">{message.timestamp}</span>
-                      ) : null}
+                    <div className="chat-message__avatar">
+                      {message.avatar ? (
+                        <img src={message.avatar} alt={avatarAlt} loading="lazy" />
+                      ) : (
+                        <span aria-hidden="true">{displayInitials || '?'}</span>
+                      )}
                     </div>
-                    {message.reply ? (
-                      <div className="chat-message__reply">
-                        <span className="chat-message__reply-author">{message.reply.author}</span>
-                        {message.reply.content ? <p>{message.reply.content}</p> : null}
+                    <div className="chat-message__body">
+                      <div className="chat-message__meta">
+                        <span className="author">{authorLabel}</span>
+                        {message.timestamp ? (
+                          <span className="timestamp">{message.timestamp}</span>
+                        ) : null}
                       </div>
-                    ) : null}
-                    <p>{message.content}</p>
+                      {message.reply ? (
+                        <div className="chat-message__reply">
+                          <span className="chat-message__reply-author">{message.reply.author}</span>
+                          {message.reply.content ? <p>{message.reply.content}</p> : null}
+                        </div>
+                      ) : null}
+                      <p>{message.content}</p>
+                    </div>
                   </div>
                 );
               })
@@ -866,12 +926,14 @@ const ForumChatPage = () => {
                 const fallbackMessage = mapApiMessage(
                   {
                     id: generateFallbackId(),
-                    author: 'You',
+                    author: user?.name ?? user?.username ?? 'You',
+                    user,
+                    user_id: user?.id ?? null,
                     body: normalizedContent,
                     created_at: new Date().toISOString(),
                     group_id: activeRoom?.id,
                   },
-                  { groupId: activeRoom?.id ?? null, fallbackAuthorId: user?.id ?? 'local-user' },
+                  { groupId: activeRoom?.id ?? null, fallbackAuthorId: user?.id ?? 'local-user', baseUrl },
                 );
 
                 if (fallbackMessage) {
