@@ -1,17 +1,28 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FcGoogle } from 'react-icons/fc';
 import AuthLayout from '../../components/auth/AuthLayout';
 import { useAuth } from '../../context/AuthContext';
 import { GOOGLE_OAUTH_CONFIG } from '@/config/google';
+import { useApi } from '@/api';
 
 const LoginPage = () => {
   const navigate = useNavigate();
   const { login, loginWithGoogle } = useAuth();
+  const { baseUrl } = useApi();
   const [remember, setRemember] = useState(false);
   const [formState, setFormState] = useState({ identifier: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const googleAuthUrl = useMemo(() => {
+    const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    try {
+      return new URL('auth/google', normalizedBase).toString();
+    } catch {
+      return `${normalizedBase}auth/google`;
+    }
+  }, [baseUrl]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -104,7 +115,7 @@ const LoginPage = () => {
 
           <div className="oauth-section">
             <p className="form-helper">Or continue with</p>
-            <a href="https://sdg-forum-api.truesurvi4.xyz/api/auth/google" className="secondary-button">
+            <a href={googleAuthUrl} className="secondary-button">
               <span className="oauth-icon">
                 <FcGoogle size={20} />
               </span>

@@ -17,10 +17,6 @@ const sanitizeBaseUrl = (value: string | undefined | null): string | null => {
             normalizedPath = '';
         }
 
-        if (normalizedPath === '/api') {
-            normalizedPath = '';
-        }
-
         return normalizedPath ? `${parsed.origin}${normalizedPath}` : parsed.origin;
     } catch {
         return null;

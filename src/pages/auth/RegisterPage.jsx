@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AuthLayout from '../../components/auth/AuthLayout';
 import { useApi } from '@/api';
-
 import { FcGoogle } from 'react-icons/fc';
 
 const RegisterPage = () => {
-  const { auth } = useApi();
+  const { auth, baseUrl } = useApi();
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState({ type: null, message: '' });
 
@@ -60,6 +59,15 @@ const RegisterPage = () => {
       setIsLoading(false);
     }
   };
+
+  const googleAuthUrl = useMemo(() => {
+    const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    try {
+      return new URL('auth/google', normalizedBase).toString();
+    } catch {
+      return `${normalizedBase}auth/google`;
+    }
+  }, [baseUrl]);
 
   return (
     <AuthLayout
@@ -130,7 +138,7 @@ const RegisterPage = () => {
 
           <div className="oauth-section">
             <p className="form-helper">Or continue with</p>
-            <a href="https://sdg-forum-api.truesurvi4.xyz/api/auth/google" className="secondary-button">
+            <a href={googleAuthUrl} className="secondary-button">
               <span className="oauth-icon">
                 <FcGoogle size={20} />
               </span>
