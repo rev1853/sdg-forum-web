@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AuthLayout from '../../components/auth/AuthLayout';
 import { useApi } from '@/api';
+import { useAuth } from '@/context/AuthContext';
+import { useGoogleSignIn } from '@/hooks/useGoogleSignIn';
 import { FcGoogle } from 'react-icons/fc';
 
 const RegisterPage = () => {
-  const { auth, baseUrl } = useApi();
+  const { auth } = useApi();
+  const { loginWithGoogle } = useAuth();
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState({ type: null, message: '' });
 
@@ -12,7 +17,7 @@ const RegisterPage = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  const handleSubmit = async event => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
@@ -60,14 +65,35 @@ const RegisterPage = () => {
     }
   };
 
-  const googleAuthUrl = useMemo(() => {
-    const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-    try {
-      return new URL('auth/google', normalizedBase).toString();
-    } catch {
-      return `${normalizedBase}auth/google`;
+  const handleGoogleCredential = useCallback(
+    async (idToken) => {
+      setIsLoading(true);
+      setFeedback({ type: null, message: '' });
+      try {
+        await loginWithGoogle(idToken);
+        navigate('/');
+      } catch (caughtError) {
+        const apiMessage =
+          caughtError?.data?.message ||
+          caughtError?.data?.error ||
+          caughtError?.message ||
+          'Google sign-in failed. Please try again.';
+        setFeedback({ type: 'error', message: apiMessage });
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [loginWithGoogle, navigate],
+  );
+
+  const { ready: isGoogleReady, loading: isGoogleLoading, error: googleError, signIn: triggerGoogleSignIn } =
+    useGoogleSignIn(handleGoogleCredential);
+
+  useEffect(() => {
+    if (googleError) {
+      setFeedback({ type: 'error', message: googleError });
     }
-  }, [baseUrl]);
+  }, [googleError]);
 
   return (
     <AuthLayout
@@ -138,12 +164,17 @@ const RegisterPage = () => {
 
           <div className="oauth-section">
             <p className="form-helper">Or continue with</p>
-            <a href={googleAuthUrl} className="secondary-button">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={triggerGoogleSignIn}
+              disabled={isLoading || (!isGoogleReady && !isGoogleLoading)}
+            >
               <span className="oauth-icon">
                 <FcGoogle size={20} />
               </span>
-              <span>Continue with Google</span>
-            </a>
+              <span>{isGoogleLoading && !isGoogleReady ? 'Preparing Google…' : 'Continue with Google'}</span>
+            </button>
           </div>
         </form>
       </div>

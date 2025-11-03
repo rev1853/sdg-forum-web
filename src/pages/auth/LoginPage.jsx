@@ -1,41 +1,58 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FcGoogle } from 'react-icons/fc';
 import AuthLayout from '../../components/auth/AuthLayout';
 import { useAuth } from '../../context/AuthContext';
-import { GOOGLE_OAUTH_CONFIG } from '@/config/google';
-import { useApi } from '@/api';
+import { useGoogleSignIn } from '@/hooks/useGoogleSignIn';
 
 const LoginPage = () => {
   const navigate = useNavigate();
   const { login, loginWithGoogle } = useAuth();
-  const { baseUrl } = useApi();
   const [remember, setRemember] = useState(false);
   const [formState, setFormState] = useState({ identifier: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const googleAuthUrl = useMemo(() => {
-    const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-    try {
-      return new URL('auth/google', normalizedBase).toString();
-    } catch {
-      return `${normalizedBase}auth/google`;
-    }
-  }, [baseUrl]);
+  const handleGoogleCredential = useCallback(
+    async (idToken) => {
+      setIsSubmitting(true);
+      setError('');
+      try {
+        await loginWithGoogle(idToken);
+        navigate('/');
+      } catch (caughtError) {
+        const apiMessage =
+          caughtError?.data?.message ||
+          caughtError?.data?.error ||
+          caughtError?.message ||
+          'Google sign-in failed. Please try again.';
+        setError(apiMessage);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [loginWithGoogle, navigate],
+  );
+
+  const { ready: isGoogleReady, loading: isGoogleLoading, error: googleError, signIn: triggerGoogleSignIn } =
+    useGoogleSignIn(handleGoogleCredential);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
+  useEffect(() => {
+    if (googleError) {
+      setError(googleError);
+    }
+  }, [googleError]);
 
-
-  const handleChange = event => {
+  const handleChange = (event) => {
     const { name, value } = event.target;
-    setFormState(current => ({ ...current, [name]: value }));
+    setFormState((current) => ({ ...current, [name]: value }));
   };
 
-  const handleSubmit = async event => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     if (!formState.identifier || !formState.password) return;
 
@@ -115,12 +132,17 @@ const LoginPage = () => {
 
           <div className="oauth-section">
             <p className="form-helper">Or continue with</p>
-            <a href={googleAuthUrl} className="secondary-button">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={triggerGoogleSignIn}
+              disabled={isSubmitting || (!isGoogleReady && !isGoogleLoading)}
+            >
               <span className="oauth-icon">
                 <FcGoogle size={20} />
               </span>
-              <span>Continue with Google</span>
-            </a>
+              <span>{isGoogleLoading && !isGoogleReady ? 'Preparing Google…' : 'Continue with Google'}</span>
+            </button>
           </div>
         </form>
       </div>
