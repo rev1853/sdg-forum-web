@@ -176,79 +176,85 @@ const ResetPasswordPage = () => {
         { label: 'Need an account? Join now', to: '/auth/register' }
       ]}
     >
-      {stage === 'request' ? (
-        <form className="auth-form" onSubmit={handleRequest}>
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input id="email" name="email" type="email" placeholder="name@example.com" required />
+      <div className="auth-card">
+        {stage === 'request' ? (
+                                                  <form className="auth-form" onSubmit={handleRequest}>
+                                                    <div className="form-group">
+                                                      <label htmlFor="email">Email</label>
+                                                      <div className="input-card">
+                                                        <input id="email" name="email" type="email" placeholder="name@example.com" required />
+                                                      </div>
+                                                    </div>
+                                          
+                                                    {requestError ? <span className="form-error">{requestError}</span> : null}
+                                          
+                                                    <button type="submit" className="primary-button" disabled={isRequestLoading}>
+                                                      {isRequestLoading ? 'Sending...' : 'Send reset token'}
+                                                    </button>
+                                                  </form>
+                                                ) : null}
+                                          
+                                                {stage === 'confirm' ? (
+                                                  <form className="auth-form" onSubmit={handleConfirm}>
+                                                    <input type="hidden" name="token" value={resetToken} />
+                                          
+                                                    <p className="form-helper">
+                                                      {tokenMessage ||
+                                                        `We sent a reset token to ${emailAddress}. We will apply it automatically once you set a new password.`}
+                                                    </p>
+                                                    {tokenExpiry ? (
+                                                      <p className="form-helper">Reset token expires at {formatExpiry(tokenExpiry)}.</p>
+                                                    ) : null}
+                                          
+                                                    <div className="form-group">
+                                                      <label htmlFor="password">New password</label>
+                                                      <div className="input-card">
+                                                        <input id="password" name="password" type="password" placeholder="Create a new password" required />
+                                                      </div>
+                                                    </div>
+                                          
+                                                    <div className="form-group">
+                                                      <label htmlFor="confirmPassword">Confirm new password</label>
+                                                      <div className="input-card">
+                                                        <input
+                                                          id="confirmPassword"
+                                                          name="confirmPassword"
+                                                          type="password"
+                                                          placeholder="Re-enter the new password"
+                                                          required
+                                                        />
+                                                      </div>
+                                                    </div>            {confirmError ? <span className="form-error">{confirmError}</span> : null}
+
+            <div className="form-row">
+              <button type="button" className="secondary-button" onClick={restartFlow}>
+                Use a different email
+              </button>
+              <button type="submit" className="primary-button" disabled={isConfirmLoading}>
+                {isConfirmLoading ? 'Updating...' : 'Update password'}
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {stage === 'success' ? (
+          <div className="auth-success">
+            <h2>Password reset complete</h2>
+            <p>
+              Your password has been updated. You will be redirected to the sign-in page shortly, or you can jump there
+              now.
+            </p>
+            <div className="form-row">
+              <button type="button" className="secondary-button" onClick={restartFlow}>
+                Reset another password
+              </button>
+              <button type="button" className="primary-button" onClick={() => navigate('/auth/login')}>
+                Go to login
+              </button>
+            </div>
           </div>
-
-          {requestError ? <span className="form-error">{requestError}</span> : null}
-
-          <button type="submit" className="primary-button" disabled={isRequestLoading}>
-            {isRequestLoading ? 'Sending...' : 'Send reset token'}
-          </button>
-        </form>
-      ) : null}
-
-      {stage === 'confirm' ? (
-        <form className="auth-form" onSubmit={handleConfirm}>
-          <input type="hidden" name="token" value={resetToken} />
-
-          <p className="form-helper">
-            {tokenMessage ||
-              `We sent a reset token to ${emailAddress}. We will apply it automatically once you set a new password.`}
-          </p>
-          {tokenExpiry ? (
-            <p className="form-helper">Reset token expires at {formatExpiry(tokenExpiry)}.</p>
-          ) : null}
-
-          <div className="form-group">
-            <label htmlFor="password">New password</label>
-            <input id="password" name="password" type="password" placeholder="Create a new password" required />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="confirmPassword">Confirm new password</label>
-            <input
-              id="confirmPassword"
-              name="confirmPassword"
-              type="password"
-              placeholder="Re-enter the new password"
-              required
-            />
-          </div>
-
-          {confirmError ? <span className="form-error">{confirmError}</span> : null}
-
-          <div className="form-row">
-            <button type="button" className="secondary-button" onClick={restartFlow}>
-              Use a different email
-            </button>
-            <button type="submit" className="primary-button" disabled={isConfirmLoading}>
-              {isConfirmLoading ? 'Updating...' : 'Update password'}
-            </button>
-          </div>
-        </form>
-      ) : null}
-
-      {stage === 'success' ? (
-        <div className="auth-success">
-          <h2>Password reset complete</h2>
-          <p>
-            Your password has been updated. You will be redirected to the sign-in page shortly, or you can jump there
-            now.
-          </p>
-          <div className="form-row">
-            <button type="button" className="secondary-button" onClick={restartFlow}>
-              Reset another password
-            </button>
-            <button type="button" className="primary-button" onClick={() => navigate('/auth/login')}>
-              Go to login
-            </button>
-          </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </AuthLayout>
   );
 };

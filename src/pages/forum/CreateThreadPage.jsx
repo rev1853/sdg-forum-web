@@ -1,345 +1,278 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ForumNavbar from '../../components/forum/ForumNavbar';
-import { useApi } from '@/api';
+import { useApi } from '../../api';
 import { useAuth } from '@/context/AuthContext';
 
-const MAX_CATEGORIES = 3;
-
 const CreateThreadPage = () => {
-  const navigate = useNavigate();
-  const { threads, categories } = useApi();
   const { token } = useAuth();
-
+  const { threads, categories: categoriesApi } = useApi();
+  const navigate = useNavigate();
   const [title, setTitle] = useState('');
-  const [selectedGoals, setSelectedGoals] = useState([]);
-  const [summary, setSummary] = useState('');
-  const [callToAction, setCallToAction] = useState('');
+  const [body, setBody] = useState('');
+  const [category, setCategory] = useState('');
   const [tags, setTags] = useState('');
-  const [imageFile, setImageFile] = useState(null);
-  const [goalError, setGoalError] = useState('');
-  const [categoryOptions, setCategoryOptions] = useState([]);
-
+  const [image, setImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [loadError, setLoadError] = useState('');
+  const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState({ type: null, message: '' });
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    categories
-      .list()
-      .then((list) => {
-        if (cancelled) return;
-        const options = list
-          .filter((category) => Boolean(category?.id))
-          .map((category) => ({
-            value: category.id,
-            label:
-              category.sdg_number !== undefined && category.sdg_number !== null
-                ? `Goal ${String(category.sdg_number).padStart(2, '0')} - ${category.name}`
-                : category.name ?? 'Untitled goal',
-          }));
-        setCategoryOptions(options);
-        if (options.length > 0 && selectedGoals.length === 0) {
-          setSelectedGoals([options[0].value]);
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to load categories', error);
-        if (!cancelled) {
-          setCategoryOptions([]);
-        }
-      });
 
+    const fetchCategories = async () => {
+      try {
+        const response = await categoriesApi.list();
+        if (cancelled) return;
+        const normalized = Array.isArray(response) ? response : [];
+        setCategories(normalized);
+        setLoadError('');
+      } catch (caughtError) {
+        if (!cancelled) {
+          console.error('Failed to fetch categories', caughtError);
+          setCategories([]);
+          setLoadError('Categories are unavailable at the moment.');
+        }
+      }
+    };
+
+    fetchCategories();
     return () => {
       cancelled = true;
     };
-  }, [categories, selectedGoals.length]);
+  }, [categoriesApi]);
 
   useEffect(() => {
-    const nonEmpty = selectedGoals.filter(Boolean);
-    if (nonEmpty.length === 0) {
-      setGoalError('Pick at least one category so the right teams can find your thread.');
-    } else if (nonEmpty.length > MAX_CATEGORIES) {
-      setGoalError(`You can assign up to ${MAX_CATEGORIES} categories.`);
-    } else {
-      setGoalError('');
+    if (!image) {
+      setImagePreview(null);
+      return;
     }
-  }, [selectedGoals]);
 
-  const tagTokens = useMemo(
+    const previewUrl = URL.createObjectURL(image);
+    setImagePreview(previewUrl);
+
+    return () => {
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [image]);
+
+  const handleImageChange = (event) => {
+    setImage(event.target.files?.[0] ?? null);
+  };
+
+  const tagValues = useMemo(
     () =>
       tags
         .split(',')
-        .map((token) => token.trim())
+        .map((entry) => entry.trim())
         .filter(Boolean),
     [tags],
   );
 
-  const selectedGoalObjects = useMemo(
-    () =>
-      selectedGoals
-        .map((goalValue) => categoryOptions.find((option) => option.value === goalValue))
-        .filter(Boolean),
-    [selectedGoals, categoryOptions],
-  );
-
-  const handleGoalChange = (index, value) => {
-    setSelectedGoals((prev) => {
-      const next = [...prev];
-      next[index] = value;
-      return next;
-    });
-  };
-
-  const addGoal = () => {
-    const filledCount = selectedGoals.filter(Boolean).length;
-    if (filledCount >= MAX_CATEGORIES || selectedGoals.length >= MAX_CATEGORIES) {
-      setGoalError(`You can assign up to ${MAX_CATEGORIES} categories.`);
-      return;
-    }
-    setSelectedGoals((prev) => [...prev, '']);
-  };
-
-  const removeGoal = (index) => {
-    setSelectedGoals((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      return next.length === 0 ? [''] : next;
-    });
-  };
-
-  const handleImageChange = (event) => {
-    const file = event.target.files?.[0] ?? null;
-    setImageFile(file);
-  };
-
-  const validateGoals = () => {
-    const nonEmpty = selectedGoals.filter(Boolean);
-    if (nonEmpty.length === 0) {
-      setGoalError('Pick at least one category so the right teams can find your thread.');
-      return false;
-    }
-    if (nonEmpty.length > MAX_CATEGORIES) {
-      setGoalError(`You can assign up to ${MAX_CATEGORIES} categories.`);
-      return false;
-    }
-    return true;
-  };
+  const selectedCategory = useMemo(() => {
+    if (!category) return null;
+    return categories.find((entry) => String(entry?.id ?? entry?.value) === String(category)) ?? null;
+  }, [categories, category]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    setError('');
 
     if (!token) {
-      setFeedback({ type: 'error', message: 'Please sign in to publish a new thread.' });
+      setError('You need to be signed in to create a thread.');
       return;
     }
 
-    if (!validateGoals()) {
+    if (!category) {
+      setError('Pick a category before submitting.');
       return;
     }
 
-    const nonEmptyGoals = selectedGoals.filter(Boolean);
-    if (!title.trim() || !summary.trim()) {
-      setFeedback({ type: 'error', message: 'Title and summary are required.' });
+    const trimmedTitle = title.trim();
+    const trimmedBody = body.trim();
+
+    if (!trimmedTitle || !trimmedBody) {
+      setError('Title and body are required.');
       return;
     }
 
-    const combinedBody = [summary.trim(), callToAction.trim() ? `\n\nCall to action:\n${callToAction.trim()}` : '']
-      .join('')
-      .trim();
+    setIsSubmitting(true);
 
     try {
-      setIsSubmitting(true);
-      setFeedback({ type: null, message: '' });
+      const payload = {
+        title: trimmedTitle,
+        body: trimmedBody,
+        categoryIds: [category],
+        tags: tagValues.length > 0 ? tagValues : undefined,
+        image: image ?? undefined,
+      };
 
-      await threads.createThread({
-        title: title.trim(),
-        body: combinedBody || summary.trim(),
-        categoryIds: nonEmptyGoals,
-        tags: tagTokens,
-        image: imageFile ?? undefined,
-      });
+      const response = await threads.createThread(payload);
+      const createdThread = response?.thread ?? response ?? null;
+      const identifier = createdThread?.id ?? createdThread?.slug ?? null;
 
-      setFeedback({
-        type: 'success',
-        message: 'Thread published successfully. Redirecting you back to the forum…',
-      });
+      if (identifier) {
+        navigate(`/forum/threads/${identifier}`);
+        return;
+      }
 
-      setTimeout(() => {
-        navigate('/forum/threads');
-      }, 1200);
-    } catch (error) {
-      console.error('Failed to create thread', error);
-      const errorMessage =
-        error?.data?.message ||
-        error?.data?.error ||
-        error?.message ||
-        'Something went wrong while publishing your thread.';
-      setFeedback({ type: 'error', message: errorMessage });
+      navigate('/forum/threads');
+    } catch (caughtError) {
+      console.error('Failed to create thread', caughtError);
+      const message =
+        caughtError?.data?.message ||
+        caughtError?.data?.error ||
+        caughtError?.message ||
+        'Failed to create thread. Try again shortly.';
+      setError(message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const previewTitle = title.trim() || 'Thread title';
+  const previewBody = (body || 'Use this space to share the context, what you tried, and what you need next.')
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' ');
+  const previewTags = tagValues.slice(0, 4);
+
   return (
-    <section className="themed-page forum-page">
-      <title>Create Thread • SDG Forum</title>
+    <>
       <ForumNavbar />
+      <main className="forum-layout">
+        <section className="form-hero">
+          <span className="form-hero__eyebrow">Start a conversation</span>
+          <h1>Share a field update with the community</h1>
+          <p>Thread posts help practitioners learn from each other. Tell the story, include data points, and ask for what you need.</p>
+        </section>
 
-      <div className="create-thread">
-        <form className="thread-form" onSubmit={handleSubmit}>
-          <span className="badge">Thread basics</span>
-          <h1>Share your latest impact</h1>
-          <p>
-            Give your peers the context they need to jump in quickly. A clear title and summary help the right people find
-            you.
-          </p>
+        <div className="create-thread">
+          <form className="create-thread__form" onSubmit={handleSubmit}>
+            {error && <div className="form-feedback form-feedback--error">{error}</div>}
+            {loadError && <div className="form-feedback form-feedback--warning">{loadError}</div>}
 
-          <div className="form-group">
-            <label htmlFor="thread-title">Thread title</label>
-            <input
-              id="thread-title"
-              placeholder="Summarize the challenge or progress in one line"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              required
-            />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>SDG categories</label>
-              <small className="form-helper">Choose up to three categories so peers can find your thread fast.</small>
-              <div className="goal-select-group">
-                {selectedGoals.map((value, index) => (
-                  <div key={index} className="goal-select">
-                    <select
-                      value={value}
-                      onChange={(event) => handleGoalChange(index, event.target.value)}
-                    >
-                      <option value="">Select a goal</option>
-                      {categoryOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    {index > 0 && (
-                      <button
-                        type="button"
-                        className="goal-remove-btn"
-                        onClick={() => removeGoal(index)}
-                        aria-label="Remove category"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {selectedGoals.length < MAX_CATEGORIES && (
-                <button type="button" className="goal-add-btn" onClick={addGoal}>
-                  + Add another category
-                </button>
-              )}
-              {goalError && <small className="form-error">{goalError}</small>}
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="thread-tags">Tags</label>
+            <div className="form-field">
+              <label htmlFor="title">Thread title</label>
+              <p className="form-field__hint">Summarize the essence of your update in one punchy sentence.</p>
               <input
-                id="thread-tags"
-                placeholder="water, sensors, climate adaptation"
-                value={tags}
-                onChange={(event) => setTags(event.target.value)}
+                id="title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Rainwater harvesting pilot doubled collection rates"
+                required
               />
-              <small>Separate tags with commas to improve discovery.</small>
             </div>
-          </div>
 
-          <div className="form-group">
-            <label htmlFor="thread-summary">Summary</label>
-            <textarea
-              id="thread-summary"
-              rows={4}
-              placeholder="Explain where you are in the journey, what you have tried, and what you have learned so far."
-              value={summary}
-              onChange={(event) => setSummary(event.target.value)}
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="thread-action">Call to action</label>
-            <textarea
-              id="thread-action"
-              rows={3}
-              placeholder="What do you need from the community right now? Samples, expertise, partners, funding?"
-              value={callToAction}
-              onChange={(event) => setCallToAction(event.target.value)}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="thread-image">Cover image (optional)</label>
-            <input id="thread-image" type="file" accept="image/*" onChange={handleImageChange} />
-          </div>
-
-          {feedback.type === 'error' ? <span className="form-error">{feedback.message}</span> : null}
-          {feedback.type === 'success' ? (
-            <div className="auth-success">
-              <p>{feedback.message}</p>
+            <div className="form-field">
+              <label htmlFor="body">What happened?</label>
+              <p className="form-field__hint">
+                Include what you tried, what surprised you, and how others can support next steps. Markdown and line breaks are supported.
+              </p>
+              <textarea
+                id="body"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={10}
+                placeholder="Set the scene, share your learning, and link to evidence or media."
+                required
+              />
             </div>
-          ) : null}
 
-          <button type="submit" className="primary-button" disabled={isSubmitting}>
-            {isSubmitting ? 'Publishing…' : 'Publish thread'}
-          </button>
-        </form>
-
-        <aside className="thread-preview">
-          <div className="preview-card">
-            <h2>Live preview</h2>
-            <div className="preview-body">
-              <div className="preview-goals">
-                {selectedGoalObjects.length > 0 ? (
-                  selectedGoalObjects.map((goal) => (
-                    <span key={goal.value} className="thread-card__goal">
-                      {goal.label}
-                    </span>
-                  ))
-                ) : (
-                  <span className="preview-placeholder">Pick at least one goal to help others discover your thread.</span>
-                )}
+            <div className="form-grid">
+              <div className="form-field">
+                <label htmlFor="category">Goal focus</label>
+                <p className="form-field__hint">Pick the primary SDG focus for this update.</p>
+                <select id="category" value={category} onChange={(e) => setCategory(e.target.value)} required>
+                  <option value="" disabled>Select a category</option>
+                  {Array.isArray(categories) &&
+                    categories
+                      .map((cat) => {
+                        const id = cat?.id ?? cat?.value ?? null;
+                        const name = cat?.name ?? cat?.label ?? 'Untitled category';
+                        return id ? (
+                          <option key={id} value={id}>
+                            {name}
+                          </option>
+                        ) : null;
+                      })
+                      .filter(Boolean)}
+                </select>
               </div>
 
-              <h3>{title || 'Thread title goes here'}</h3>
-              <p>{summary || 'Your summary will appear here as you type.'}</p>
-
-              {callToAction ? (
-                <div className="preview-cta">
-                  <strong>Call to action</strong>
-                  <p>{callToAction}</p>
-                </div>
-              ) : null}
-
-              {tagTokens.length > 0 ? (
-                <div className="preview-tags">
-                  {tagTokens.map((tag) => (
-                    <span key={tag} className="preview-tag">
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
+              <div className="form-field">
+                <label htmlFor="tags">Tags</label>
+                <p className="form-field__hint">Use up to five labels so others can find your update.</p>
+                <input
+                  id="tags"
+                  type="text"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  placeholder="water, co-design, pilot"
+                />
+              </div>
             </div>
-          </div>
-        </aside>
-      </div>
-    </section>
+
+            <div className="form-field">
+              <label htmlFor="image">Cover image</label>
+              <p className="form-field__hint">Optional: upload a hero image or infographic (max 5&nbsp;MB).</p>
+              <input id="image" type="file" accept="image/*" onChange={handleImageChange} />
+              {image && (
+                <p className="form-field__meta">
+                  Selected file: <strong>{image.name}</strong>
+                </p>
+              )}
+            </div>
+
+            <div className="form-actions">
+              <button type="submit" className="primary-button" disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting…' : 'Publish thread'}
+              </button>
+              <p className="form-actions__hint">
+                Threads are public and can be edited later from your profile.
+              </p>
+            </div>
+          </form>
+
+          <aside className="create-thread__sidebar">
+            <div className="preview-card">
+              <header className="preview-card__header">
+                <span className="preview-card__badge">{selectedCategory?.name ?? 'Goal TBD'}</span>
+                <h3>{previewTitle}</h3>
+                <p>{previewBody}</p>
+              </header>
+              {imagePreview && (
+                <div className="preview-card__media">
+                  <img src={imagePreview} alt="" />
+                </div>
+              )}
+              {previewTags.length > 0 && (
+                <footer className="preview-card__tags">
+                  {previewTags.map((tag) => (
+                    <span key={tag}>#{tag}</span>
+                  ))}
+                </footer>
+              )}
+            </div>
+
+            <div className="create-thread__tips">
+              <h4>Tips for a standout thread</h4>
+              <ul>
+                <li>Share the challenge, what you tested, and the outcome.</li>
+                <li>Link to reports, dashboards, or media where possible.</li>
+                <li>End with a clear ask—feedback, partners, or resources.</li>
+                <li>Mention collaborators to give credit and invite them in.</li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </>
   );
 };
 

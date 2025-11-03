@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import AuthLayout from '../../components/auth/AuthLayout';
 import { useApi } from '@/api';
 
+import { FcGoogle } from 'react-icons/fc';
+
 const RegisterPage = () => {
   const { auth } = useApi();
   const [isLoading, setIsLoading] = useState(false);
@@ -67,56 +69,76 @@ const RegisterPage = () => {
         { label: 'Already have an account? Sign in', to: '/auth/login' }
       ]}
     >
-      <form
-        className="auth-form"
-        onSubmit={handleSubmit}
-      >
-        <div className="form-row">
+      <div className="auth-card">
+        <form
+          className="auth-form"
+          onSubmit={handleSubmit}
+        >
           <div className="form-group">
             <label htmlFor="firstName">First name</label>
-            <input id="firstName" name="firstName" placeholder="Alex" required />
+            <div className="input-card">
+              <input id="firstName" name="firstName" placeholder="John" required />
+            </div>
           </div>
           <div className="form-group">
             <label htmlFor="lastName">Last name</label>
-            <input id="lastName" name="lastName" placeholder="Rivera" required />
+            <div className="input-card">
+              <input id="lastName" name="lastName" placeholder="Doe" required />
+            </div>
           </div>
-        </div>
 
-        <div className="form-group">
-          <label htmlFor="email">Email</label>
-          <input id="email" name="email" type="email" placeholder="name@example.com" required />
-        </div>
-
-        <div className="form-row">
           <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input id="password" name="password" type="password" placeholder="Create a password" required />
+            <label htmlFor="email">Email</label>
+            <div className="input-card">
+              <input id="email" name="email" type="email" placeholder="name@example.com" required />
+            </div>
           </div>
-          <div className="form-group">
-            <label htmlFor="confirmPassword">Confirm password</label>
-            <input
-              id="confirmPassword"
-              name="confirmPassword"
-              type="password"
-              placeholder="Re-enter your password"
-              required
-            />
-          </div>
-        </div>
 
-        {feedback.type === 'error' ? (
-          <span className="form-error">{feedback.message}</span>
-        ) : null}
-        {feedback.type === 'success' ? (
-          <div className="auth-success">
-            <p>{feedback.message}</p>
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="password">Password</label>
+              <div className="input-card">
+                <input id="password" name="password" type="password" placeholder="Create a password" required />
+              </div>
+            </div>
+            <div className="form-group">
+              <label htmlFor="confirmPassword">Confirm password</label>
+              <div className="input-card">
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  placeholder="Re-enter your password"
+                  required
+                />
+              </div>
+            </div>
           </div>
-        ) : null}
 
-        <button type="submit" className="primary-button" disabled={isLoading}>
-          {isLoading ? 'Creating...' : 'Create account'}
-        </button>
-      </form>
+          {feedback.type === 'error' ? (
+            <span className="form-error">{feedback.message}</span>
+          ) : null}
+          {feedback.type === 'success' ? (
+            <div className="auth-success">
+              <p>{feedback.message}</p>
+            </div>
+          ) : null}
+
+          <button type="submit" className="primary-button" disabled={isLoading}>
+            {isLoading ? 'Creating...' : 'Create account'}
+          </button>
+
+          <div className="oauth-section">
+            <p className="form-helper">Or continue with</p>
+            <a href="https://sdg-forum-api.truesurvi4.xyz/api/auth/google" className="secondary-button">
+              <span className="oauth-icon">
+                <FcGoogle size={20} />
+              </span>
+              <span>Continue with Google</span>
+            </a>
+          </div>
+        </form>
+      </div>
     </AuthLayout>
   );
 };

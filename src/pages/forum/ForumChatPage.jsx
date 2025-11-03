@@ -1,335 +1,139 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ForumNavbar from '../../components/forum/ForumNavbar';
 import { useApi } from '@/api';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '@/context/AuthContext';
 import useChatSocket from '@/hooks/useChatSocket';
-import { resolveProfileImageUrl } from '@/utils/media';
+
+const MESSAGE_LIMIT = 500;
 
 const FALLBACK_ROOMS = [
   {
     id: 'global',
-    title: 'Global Announcements',
+    name: 'Global announcements',
     description: 'Platform updates and community-wide news.',
     messages: [
       {
         id: 'global-1',
         author: 'Moderator',
-        timestamp: '08:24',
         content: 'Welcome to the live chat! Share quick updates and link to your threads for deeper dives.',
+        timestamp: '08:24',
       },
       {
         id: 'global-2',
         author: 'Zahra',
-        timestamp: '08:27',
         content: 'We just published a new guide for inclusive co-design workshops. Feedback welcome.',
-      },
-    ],
-  },
-  {
-    id: 'goal-3',
-    title: 'SDG 3 · Health + Well-being',
-    description: 'Healthcare delivery, nutrition, mental health initiatives.',
-    messages: [
-      {
-        id: 'goal-3-1',
-        author: 'Dr. Lina',
-        timestamp: '07:55',
-        content: 'Cold chain pilot reached 16 clinics this week. Solar units are holding temperature in rainy season.',
-      },
-      {
-        id: 'goal-3-2',
-        author: 'Santi',
-        timestamp: '08:03',
-        content: 'Sharing WHO data set updates for those syncing weekly dashboards.',
+        timestamp: '08:27',
       },
     ],
   },
   {
     id: 'goal-6',
-    title: 'SDG 6 · Clean Water',
+    name: 'SDG 6 • Clean Water',
     description: 'Water purification, sanitation systems, watershed protection.',
     messages: [
       {
         id: 'goal-6-1',
         author: 'Abena',
-        timestamp: '09:10',
         content: 'We have spare capacity on our filtration units. DM if your community needs a shipment.',
+        timestamp: '09:10',
       },
       {
         id: 'goal-6-2',
         author: 'Elisa',
-        timestamp: '09:22',
         content: 'Does anyone have sample policies for community-led maintenance funding?',
-      },
-    ],
-  },
-  {
-    id: 'goal-11',
-    title: 'SDG 11 · Sustainable Cities',
-    description: 'Urban planning, housing access, resilient infrastructure.',
-    messages: [
-      {
-        id: 'goal-11-1',
-        author: 'Ravi',
-        timestamp: '10:01',
-        content: 'Modular micro-housing prototypes are ready for review. Looking for testers in coastal regions.',
+        timestamp: '09:22',
       },
     ],
   },
 ];
 
-const MESSAGE_CHARACTER_LIMIT = 2000;
-const SCROLL_THRESHOLD_PX = 120;
-
-const generateFallbackId = () => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-};
-
-const deriveInitials = (value) => {
-  if (!value || typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-  const segments = trimmed.split(/\s+/).filter(Boolean);
-  if (segments.length === 0) return '';
-  if (segments.length === 1) {
-    return segments[0].slice(0, 2).toUpperCase();
-  }
-  const first = segments[0][0] ?? '';
-  const last = segments[segments.length - 1][0] ?? '';
-  return `${first}${last}`.toUpperCase();
-};
-
-const mapApiGroupToRoom = (group) => {
-  if (!group || typeof group !== 'object') {
-    return null;
-  }
-
-  const categories = Array.isArray(group.categories)
-    ? group.categories.map((entry) => entry?.category?.name).filter(Boolean)
-    : [];
-
-  const fallbackDescription = categories.length > 0 ? `Focus: ${categories.join(', ')}` : 'Live discussion room.';
-  const description =
-    typeof group.description === 'string' && group.description.trim().length > 0
-      ? group.description
-      : fallbackDescription;
-
-  return {
-    id: group.id ?? group.slug ?? group.name ?? generateFallbackId(),
-    title: group.name ?? 'SDG Forum Live Room',
-    description,
-    categories,
-    source: 'api',
-  };
-};
-
-const formatTimestamp = (value) => {
+const formatTime = (value) => {
   if (!value) return '';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-const extractUserName = (candidate) => {
-  if (!candidate || typeof candidate === 'number') return undefined;
-  if (typeof candidate === 'string') return candidate;
-  if (typeof candidate === 'object') {
-    return (
-      candidate.name ??
-      candidate.username ??
-      candidate.displayName ??
-      candidate.fullName ??
-      candidate.handle ??
-      undefined
-    );
-  }
-  return undefined;
+const getInitials = (value) => {
+  if (!value) return 'U';
+  const tokens = value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0]);
+  if (tokens.length === 0) return 'U';
+  if (tokens.length === 1) return tokens[0].toUpperCase();
+  return `${tokens[0]}${tokens[tokens.length - 1]}`.toUpperCase();
 };
 
-const extractUserId = (candidate, fallback) => {
-  if (!candidate) return fallback;
-  if (typeof candidate === 'object') {
-    return (
-      candidate.id ??
-      candidate.userId ??
-      candidate.user_id ??
-      candidate.senderId ??
-      candidate.sender_id ??
-      candidate.authorId ??
-      candidate.author_id ??
-      fallback ??
-      null
-    );
-  }
-  return fallback ?? null;
-};
-
-const mapApiMessage = (input, options = {}) => {
-  const message = input?.message ?? input;
-  if (!message || typeof message !== 'object') return null;
-
-  const targetGroupId = getMessageGroupId(message) ?? options.groupId ?? null;
-  const { baseUrl: apiBaseUrl } = options;
-
-  const rawAuthorObject =
-    message.user ?? message.sender ?? message.author ?? (typeof message.author === 'object' ? message.author : null);
-
-  const authorName =
-    extractUserName(rawAuthorObject) ??
-    (typeof message.author === 'string' ? message.author : undefined) ??
-    extractUserName(message.profile) ??
-    'Participant';
-
-  const authorId =
-    message.user_id ??
-    message.userId ??
-    message.sender_id ??
-    message.senderId ??
-    message.author_id ??
-    message.authorId ??
-    extractUserId(rawAuthorObject, options.fallbackAuthorId ?? null);
-
-  const avatarCandidates = [
-    rawAuthorObject,
-    message.profile,
-    message.user_profile,
-    message.author_profile,
-    message,
-  ];
-
-  let authorAvatar = null;
-  for (const candidate of avatarCandidates) {
-    if (!candidate || typeof candidate !== 'object') continue;
-    const resolved = resolveProfileImageUrl(candidate, apiBaseUrl);
-    if (resolved) {
-      authorAvatar = resolved;
-      break;
-    }
-  }
-
-  const authorInitials = deriveInitials(authorName);
-
-  const rawTimestamp =
-    message.created_at ?? message.createdAt ?? message.sent_at ?? message.sentAt ?? message.timestamp ?? null;
-
-  let createdAtMs = null;
-  let displayTimestamp = typeof message.timestamp === 'string' ? message.timestamp : '';
-  let isoTimestamp = null;
-
-  if (rawTimestamp) {
-    const parsed = new Date(rawTimestamp);
-    if (!Number.isNaN(parsed.getTime())) {
-      createdAtMs = parsed.getTime();
-      isoTimestamp = parsed.toISOString();
-      displayTimestamp = formatTimestamp(parsed.toISOString()) ?? displayTimestamp;
-    }
-  }
-
-  if (createdAtMs === null) {
-    createdAtMs = Date.now();
-    isoTimestamp = new Date(createdAtMs).toISOString();
-  }
-
-  if (!displayTimestamp) {
-    displayTimestamp = formatTimestamp(isoTimestamp) ?? '';
-  }
-
-  const content =
-    message.body ??
-    message.content ??
-    message.text ??
-    message.message ??
-    (typeof message === 'string' ? message : '');
-
-  const normalizedContent = String(content).trim();
-  if (!normalizedContent) {
-    return null;
-  }
-
-  const replySource = message.reply_to ?? message.replyTo ?? message.reply ?? null;
-  let reply = null;
-
-  if (replySource && typeof replySource === 'object') {
-    const replyAuthorObject = replySource.user ?? replySource.author ?? replySource.sender ?? null;
-    reply = {
-      id: replySource.id ?? null,
-      author: extractUserName(replyAuthorObject) ?? (typeof replySource.author === 'string' ? replySource.author : 'Unknown'),
-      content: replySource.body ?? replySource.content ?? replySource.text ?? '',
-    };
-
-    if (!reply.content) {
-      reply = null;
-    }
-  }
-
-  const identifier =
-    message.id ??
-    message.messageId ??
-    message.message_id ??
-    message.uuid ??
-    message._id ??
-    generateFallbackId();
-
+const normalizeRoom = (room) => {
+  if (!room) return null;
   return {
-    id: identifier,
-    groupId: targetGroupId,
-    author: authorName,
-    authorId,
-    timestamp: displayTimestamp,
-    createdAt: isoTimestamp,
-    createdAtMs,
-    content: normalizedContent,
-    reply,
-    avatar: authorAvatar,
-    initials: authorInitials || (typeof authorName === 'string' ? authorName.slice(0, 1).toUpperCase() : ''),
+    id: room.id ?? room.slug ?? room.name ?? null,
+    name: room.name ?? 'SDG Forum Live Room',
+    description:
+      room.description && room.description.trim().length > 0
+        ? room.description
+        : room.categories && room.categories.length > 0
+          ? `Focus: ${room.categories.map((entry) => entry?.category?.name).filter(Boolean).join(', ')}`
+          : 'Live conversation with the community.',
   };
 };
 
-const getMessageGroupId = input => {
-  const message = input?.message ?? input;
+const normalizeMessage = (message) => {
+  if (!message) return null;
+  const raw = message?.message ?? message;
+  if (!raw || typeof raw !== 'object') return null;
 
-  return (
-    message?.groupId ??
-    message?.group_id ??
-    message?.group?.id ??
-    message?.roomId ??
-    message?.room_id ??
-    null
-  );
-};
+  const content = raw.content ?? raw.body ?? raw.text ?? '';
+  const trimmed = typeof content === 'string' ? content.trim() : '';
+  if (!trimmed) return null;
 
-const getMessageId = input => {
-  const message = input?.message ?? input;
-  return message?.id ?? message?.messageId ?? message?.message_id ?? null;
-};
+  const authorObject = raw.sender ?? raw.author ?? raw.user ?? raw.profile ?? null;
+  const authorName =
+    (typeof authorObject === 'string' && authorObject.trim().length > 0
+      ? authorObject.trim()
+      : authorObject?.name ?? authorObject?.username ?? authorObject?.displayName) || 'Community member';
 
-const isDesktopMatch = () => {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-    return true;
-  }
-  return window.matchMedia('(min-width: 1025px)').matches;
+  const timestampValue =
+    raw.created_at ?? raw.createdAt ?? raw.sent_at ?? raw.sentAt ?? raw.timestamp ?? new Date().toISOString();
+
+  return {
+    id:
+      raw.id ??
+      raw.messageId ??
+      raw.message_id ??
+      `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    groupId: raw.groupId ?? raw.group_id ?? null,
+    author: authorName,
+    authorId:
+      raw.sender_id ??
+      raw.senderId ??
+      raw.author_id ??
+      raw.authorId ??
+      raw.user_id ??
+      raw.userId ??
+      null,
+    content: trimmed,
+    timestamp: formatTime(timestampValue),
+    initials: getInitials(authorName),
+  };
 };
 
 const ForumChatPage = () => {
   const { chat, baseUrl } = useApi();
   const { user, token } = useAuth();
+  const supportsLiveChat = typeof chat?.listGroups === 'function';
+
   const [rooms, setRooms] = useState([]);
   const [activeRoomId, setActiveRoomId] = useState(null);
-  const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState([]);
-  const [isRoomsLoading, setIsRoomsLoading] = useState(false);
-  const [isMessagesLoading, setIsMessagesLoading] = useState(false);
-  const [roomsError, setRoomsError] = useState('');
-  const [messagesError, setMessagesError] = useState('');
-  const [sendError, setSendError] = useState('');
+  const [isLoadingRooms, setIsLoadingRooms] = useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [draft, setDraft] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(() => isDesktopMatch());
-  const [socketWarning, setSocketWarning] = useState('');
-  const socketRoomRef = useRef(null);
+  const [sendError, setSendError] = useState('');
+
   const streamRef = useRef(null);
 
   useEffect(() => {
@@ -339,22 +143,32 @@ const ForumChatPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    const loadRooms = async () => {
-      setIsRoomsLoading(true);
-      setRoomsError('');
+    if (!supportsLiveChat) {
+      setRooms(FALLBACK_ROOMS);
+      setActiveRoomId((current) => current ?? FALLBACK_ROOMS[0]?.id ?? null);
+      setStatusMessage('Live rooms preview is shown because the chat API is unavailable.');
+      setIsLoadingRooms(false);
+      return undefined;
+    }
 
+    const loadRooms = async () => {
+      setIsLoadingRooms(true);
       try {
-        const response = await chat.listGroups({ pageSize: 12 });
+        const response = await chat.listGroups({ pageSize: 8 });
         if (cancelled) return;
 
-        const rawRooms = Array.isArray(response?.data) ? response.data : [];
-        const mappedRooms = rawRooms.map(mapApiGroupToRoom).filter(Boolean);
+        const mappedRooms = (Array.isArray(response?.data) ? response.data : [])
+          .map(normalizeRoom)
+          .filter((room) => room && room.id);
 
         if (mappedRooms.length > 0) {
           setRooms(mappedRooms);
-          setActiveRoomId((prev) =>
-            prev && mappedRooms.some((room) => room.id === prev) ? prev : mappedRooms[0].id,
-          );
+          setActiveRoomId((current) => {
+            if (current && mappedRooms.some((room) => room.id === current)) {
+              return current;
+            }
+            return mappedRooms[0].id;
+          });
           return;
         }
 
@@ -363,606 +177,354 @@ const ForumChatPage = () => {
       } catch (error) {
         if (!cancelled) {
           console.error('Failed to load chat rooms', error);
-          setRoomsError('Unable to load live chat rooms right now. Showing a preview instead.');
           setRooms(FALLBACK_ROOMS);
           setActiveRoomId(FALLBACK_ROOMS[0]?.id ?? null);
+          setStatusMessage('Unable to load live rooms. Showing a preview instead.');
         }
       } finally {
         if (!cancelled) {
-          setIsRoomsLoading(false);
+          setIsLoadingRooms(false);
         }
       }
     };
 
     loadRooms();
-
     return () => {
       cancelled = true;
     };
-  }, [chat]);
-
-  useEffect(() => {
-    if (rooms.length > 0 && !activeRoomId) {
-      setActiveRoomId(rooms[0].id);
-    }
-  }, [rooms, activeRoomId]);
-
-  const activeRoom = useMemo(
-    () => rooms.find((room) => room.id === activeRoomId) ?? null,
-    [rooms, activeRoomId],
-  );
-
-  const handleIncomingMessage = useCallback(
-    (payload) => {
-      const targetGroupId = getMessageGroupId(payload);
-      if (!targetGroupId) return;
-      if (!activeRoom || activeRoom.source !== 'api') return;
-      if (targetGroupId !== activeRoom.id) return;
-
-      const mapped = mapApiMessage(payload?.message ?? payload, { groupId: activeRoom.id, baseUrl });
-      if (!mapped) return;
-
-      setMessages((prev) => {
-        if (prev.some((message) => message.id === mapped.id)) {
-          return prev;
-        }
-
-        const next = [...prev, mapped];
-        next.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
-        return next;
-      });
-    },
-    [activeRoom, baseUrl],
-  );
-
-  const handleRemovedMessage = useCallback(
-    (payload) => {
-      const targetGroupId = getMessageGroupId(payload);
-      const identifier = getMessageId(payload);
-      if (!identifier) return;
-      if (!activeRoom || activeRoom.source !== 'api') return;
-      if (targetGroupId && targetGroupId !== activeRoom.id) return;
-      setMessages((prev) => prev.filter((message) => message.id !== identifier));
-    },
-    [activeRoom],
-  );
+  }, [chat, supportsLiveChat]);
 
   const {
     status: socketStatus,
-    error: socketError,
     joinGroup: joinSocketGroup,
     leaveGroup: leaveSocketGroup,
-    sendMessage: socketSendMessage,
-    isConnected: isSocketConnected,
+    sendMessage,
   } = useChatSocket({
     baseUrl,
     token,
-    enabled: Boolean(token),
-    onMessage: handleIncomingMessage,
-    onMessageRemoved: handleRemovedMessage,
+    enabled: Boolean(token && supportsLiveChat),
+    onMessage: (payload) => {
+      const mapped = normalizeMessage(payload);
+      if (!mapped || !mapped.groupId) return;
+      setMessages((current) => {
+        if (mapped.groupId !== activeRoomId) {
+          return current;
+        }
+        return [...current, mapped];
+      });
+    },
+    onMessageRemoved: (payload) => {
+      const id = payload?.id ?? payload?.message?.id;
+      if (!id) return;
+      setMessages((current) => current.filter((message) => message.id !== id));
+    },
   });
 
   useEffect(() => {
-    if (socketError) {
-      setSocketWarning(socketError.message ?? 'Live chat connection lost. Reconnecting…');
-    } else {
-      setSocketWarning('');
+    if (!activeRoomId) {
+      setMessages([]);
+      return;
     }
-  }, [socketError]);
 
-  const loadMessages = useCallback(
-    async (room) => {
-      setSendError('');
+    if (!supportsLiveChat) {
+      const fallbackRoom = FALLBACK_ROOMS.find((room) => room.id === activeRoomId);
+      const fallbackMessages = fallbackRoom
+        ? fallbackRoom.messages.map((message) => ({
+            ...message,
+            groupId: fallbackRoom.id,
+            initials: getInitials(message.author),
+          }))
+        : [];
+      setMessages(fallbackMessages);
+      setStatusMessage('Live chat API is unavailable. Showing a preview instead.');
+      setIsLoadingMessages(false);
+      return;
+    }
 
-      if (!room) {
-        setMessages([]);
-        setMessagesError('');
-        return;
-      }
+    if (!token) {
+      const fallbackRoom = FALLBACK_ROOMS.find((room) => room.id === activeRoomId);
+      const fallbackMessages = fallbackRoom
+        ? fallbackRoom.messages.map((message) => ({
+            ...message,
+            groupId: fallbackRoom.id,
+            initials: getInitials(message.author),
+          }))
+        : [];
+      setMessages(fallbackMessages);
+      setStatusMessage('Sign in to join the live conversation. Showing a preview instead.');
+      return;
+    }
 
-      if (room.source !== 'api') {
-        const fallbackMessages = Array.isArray(room.messages)
-          ? room.messages
-              .map((item) =>
-                mapApiMessage(item, { groupId: room.id, fallbackAuthorId: item?.authorId, baseUrl }),
-              )
-              .filter(Boolean)
-          : [];
+    let cancelled = false;
 
-        fallbackMessages.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
-
-        setMessages(fallbackMessages);
-        setMessagesError('');
-        return;
-      }
-
-      if (!token) {
-        setMessages([]);
-        setMessagesError('Sign in to view live chat activity and participate in the conversation.');
-        return;
-      }
-
-      setIsMessagesLoading(true);
-      setMessagesError('');
-
+    const loadMessages = async () => {
+      setIsLoadingMessages(true);
+      setStatusMessage('');
       try {
-        await chat.joinGroup(room.id).catch(() => undefined);
-        const response = await chat.listMessages(room.id, { limit: 50 });
-        const payload =
-          (response && 'messages' in response ? response.messages : undefined) ??
-          (response && Array.isArray(response?.data) ? response.data : undefined) ??
-          [];
-        const mappedMessages = Array.isArray(payload)
-          ? payload.map((item) => mapApiMessage(item, { groupId: room.id, baseUrl })).filter(Boolean)
-          : [];
+        await chat.joinGroup(activeRoomId).catch(() => undefined);
+        const response = await chat.listMessages(activeRoomId, { limit: 50 });
+        if (cancelled) return;
 
-        mappedMessages.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
-        setMessages(mappedMessages);
+        const rawMessages = Array.isArray(response?.messages)
+          ? response.messages
+          : Array.isArray(response?.data)
+            ? response.data
+            : [];
+        const normalized = rawMessages.map(normalizeMessage).filter(Boolean);
+        setMessages(normalized);
       } catch (error) {
-        console.error('Failed to load chat messages', error);
-        setMessages([]);
-        setMessagesError('Unable to load messages from the SDG Forum API right now.');
+        if (!cancelled) {
+          console.error('Failed to load chat messages', error);
+          setMessages([]);
+          setStatusMessage('Unable to load recent messages. New ones will appear when the connection is ready.');
+        }
       } finally {
-        setIsMessagesLoading(false);
+        if (!cancelled) {
+          setIsLoadingMessages(false);
+        }
       }
-    },
-    [chat, token, baseUrl],
-  );
+    };
+
+    loadMessages();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRoomId, chat, supportsLiveChat, token]);
 
   useEffect(() => {
-    loadMessages(activeRoom);
-  }, [activeRoom, loadMessages]);
+    if (!supportsLiveChat || !activeRoomId || !token) return undefined;
+
+    let isMounted = true;
+
+    const ensureSocketSubscription = async () => {
+      try {
+        await joinSocketGroup(activeRoomId);
+      } catch (error) {
+        if (isMounted) {
+          console.error('Failed to subscribe to chat room', error);
+          setStatusMessage('Live updates are offline. New messages may be delayed.');
+        }
+      }
+    };
+
+    ensureSocketSubscription();
+
+    return () => {
+      isMounted = false;
+      leaveSocketGroup(activeRoomId).catch(() => undefined);
+      chat.leaveGroup(activeRoomId).catch(() => undefined);
+    };
+  }, [activeRoomId, chat, joinSocketGroup, leaveSocketGroup, supportsLiveChat, token]);
 
   useEffect(() => {
-    const node = streamRef.current;
-    if (!node) return;
-
-    requestAnimationFrame(() => {
-      node.scrollTo({ top: node.scrollHeight, behavior: 'auto' });
-    });
-  }, [activeRoom?.id]);
-
-  useEffect(() => {
-    const node = streamRef.current;
-    if (!node) return;
-
-    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
-    if (distanceFromBottom <= SCROLL_THRESHOLD_PX) {
-      node.scrollTo({ top: node.scrollHeight, behavior: messages.length > 1 ? 'smooth' : 'auto' });
-    }
+    const element = streamRef.current;
+    if (!element) return;
+    element.scrollTop = element.scrollHeight;
   }, [messages]);
 
-  useEffect(() => {
-    if (!activeRoom || activeRoom.source !== 'api' || !token) {
-      const previous = socketRoomRef.current;
-      if (previous) {
-        leaveSocketGroup(previous).catch(() => undefined);
-        socketRoomRef.current = null;
-      }
-      return;
-    }
-
-    const targetRoomId = activeRoom.id;
-
-    const ensureSubscription = async () => {
-      try {
-        await chat.joinGroup(targetRoomId).catch(() => undefined);
-      } catch (error) {
-        console.error('Failed to join chat room via API', error);
-      }
-
-      if (!isSocketConnected) {
-        return;
-      }
-
-      if (socketRoomRef.current && socketRoomRef.current !== targetRoomId) {
-        await leaveSocketGroup(socketRoomRef.current).catch(() => undefined);
-        socketRoomRef.current = null;
-      }
-
-      if (socketRoomRef.current === targetRoomId) {
-        return;
-      }
-
-      try {
-        await joinSocketGroup(targetRoomId);
-        socketRoomRef.current = targetRoomId;
-      } catch (error) {
-        console.error('Failed to subscribe to chat room', error);
-        setSocketWarning('Unable to subscribe to live updates for this room.');
-      }
-    };
-
-    ensureSubscription();
-  }, [activeRoom, chat, isSocketConnected, joinSocketGroup, leaveSocketGroup, token]);
-
-  useEffect(
-    () => () => {
-      if (socketRoomRef.current) {
-        leaveSocketGroup(socketRoomRef.current).catch(() => undefined);
-        socketRoomRef.current = null;
-      }
-    },
-    [leaveSocketGroup],
-  );
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    const mediaQuery = window.matchMedia('(min-width: 1025px)');
-
-    const handleChange = (event) => {
-      setIsDesktop(event.matches);
-      if (event.matches) {
-        setIsSidebarOpen(false);
-      }
-    };
-
-    handleChange(mediaQuery);
-
-    if (typeof mediaQuery.addEventListener === 'function') {
-      mediaQuery.addEventListener('change', handleChange);
-      return () => mediaQuery.removeEventListener('change', handleChange);
-    }
-
-    mediaQuery.addListener(handleChange);
-    return () => mediaQuery.removeListener(handleChange);
-  }, []);
-
   const connectionLabel = useMemo(() => {
-    if (!activeRoom || activeRoom.source !== 'api') {
-      return 'Preview';
-    }
-    if (!token) {
-      return 'Sign in required';
-    }
-    if (socketStatus === 'connected') {
-      return 'Live now';
-    }
-    if (socketStatus === 'connecting') {
-      return 'Connecting…';
-    }
-    if (socketWarning) {
-      return 'Offline';
-    }
+    if (!token) return 'Preview';
+    if (socketStatus === 'connected') return 'Live now';
+    if (socketStatus === 'connecting') return 'Connecting…';
+    if (socketStatus === 'error') return 'Offline';
+    if (socketStatus === 'disconnected') return 'Offline';
     return 'Idle';
-  }, [activeRoom, socketStatus, socketWarning, token]);
+  }, [socketStatus, token]);
 
   const trimmedDraft = draft.trim();
-  const charactersRemaining = MESSAGE_CHARACTER_LIMIT - trimmedDraft.length;
-  const isOverLimit = charactersRemaining < 0;
-  const isNearLimit = !isOverLimit && charactersRemaining <= 50;
-  const counterClassName = [
-    'chat-composer__counter',
-    isOverLimit ? 'is-error' : '',
-    isNearLimit ? 'is-warning' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const counterText = trimmedDraft
-    ? isOverLimit
-      ? `${Math.abs(charactersRemaining)} over the limit`
-      : `${charactersRemaining} characters left`
-    : `${MESSAGE_CHARACTER_LIMIT} characters max`;
-
-  const sidebarId = 'chat-sidebar-panel';
-  const sidebarStyle = !isDesktop && !isSidebarOpen ? { display: 'none' } : undefined;
-  const sidebarClassName = [
-    'forum-sidebar',
-    !isDesktop ? 'chat-sidebar-panel' : '',
-    !isDesktop && isSidebarOpen ? 'is-open' : '',
+  const charactersRemaining = MESSAGE_LIMIT - trimmedDraft.length;
+  const composerCounterClass = [
+    'conversation-composer__counter',
+    charactersRemaining < 0 ? 'is-error' : '',
+    charactersRemaining <= 50 && charactersRemaining >= 0 ? 'is-warning' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
-  const handleSubmit = async (event) => {
+  const handleSend = async (event) => {
     event.preventDefault();
-    const normalizedContent = draft.trim();
-    if (!normalizedContent || !activeRoom) return;
-
-    if (normalizedContent.length > MESSAGE_CHARACTER_LIMIT) {
-      setSendError(`Messages are limited to ${MESSAGE_CHARACTER_LIMIT} characters.`);
-      return;
-    }
-
-    if (activeRoom.source !== 'api') {
-      const fallbackMessage = mapApiMessage(
-        {
-          id: generateFallbackId(),
-          author: user?.name ?? user?.username ?? 'You',
-          user,
-          user_id: user?.id ?? null,
-          body: normalizedContent,
-          created_at: new Date().toISOString(),
-          group_id: activeRoom.id,
-        },
-        { groupId: activeRoom.id, fallbackAuthorId: user?.id ?? 'local-user', baseUrl },
-      );
-
-      if (fallbackMessage) {
-        setMessages(prev => {
-          const next = [...prev, fallbackMessage];
-          next.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
-          return next;
-        });
-      }
-      setDraft('');
-      return;
-    }
-
     if (!token) {
-      setMessagesError('Sign in to join the conversation.');
+      setSendError('Sign in to send messages.');
       return;
     }
 
-    if (!isSocketConnected) {
-      setSendError('Reconnecting to live chat. Please try again momentarily.');
+    if (!activeRoomId) {
+      setSendError('Choose a room before sending a message.');
       return;
     }
 
-    setIsSending(true);
-    setSendError('');
+    if (!supportsLiveChat) {
+      setSendError('Live chat is temporarily unavailable.');
+      return;
+    }
+
+    if (charactersRemaining < 0) {
+      setSendError('Message is over the character limit.');
+      return;
+    }
+
+    if (!trimmedDraft) {
+      return;
+    }
 
     try {
-      const result = await socketSendMessage({ groupId: activeRoom.id, content: normalizedContent });
+      setIsSending(true);
+      setSendError('');
+      await sendMessage({ groupId: activeRoomId, content: trimmedDraft });
       setDraft('');
-      if (!result || result?.status !== 'pending') {
-        await loadMessages(activeRoom);
-      }
     } catch (error) {
       console.error('Failed to send message', error);
-      setSendError(error?.message ?? 'Unable to send message right now.');
+      setSendError(error?.message || 'Unable to send your message right now.');
     } finally {
       setIsSending(false);
     }
   };
 
+  const activeRoom = rooms.find((room) => room.id === activeRoomId) ?? null;
+  const connectionState = connectionLabel.toLowerCase().replace(/\s+/g, '-');
+
   return (
-    <section className="themed-page forum-page">
-      <title>Forum Chat • SDG Forum</title>
+    <>
       <ForumNavbar />
-
-      <div className="forum-layout chat-layout">
-        <aside
-          id={sidebarId}
-          className={sidebarClassName}
-          aria-hidden={!isDesktop && !isSidebarOpen}
-          style={sidebarStyle}
-        >
-          {!isDesktop && (
-            <button
-              type="button"
-              className="chat-sidebar-close"
-              aria-label="Close menu"
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              Close
-            </button>
-          )}
-          <div className="sidebar-card">
-            <h2>Forum rooms</h2>
-            <p>Drop in for real-time updates, resource swaps, and quick coordination.</p>
-
-            {roomsError ? (
-              <p className="chat-status chat-status--info" role="status">
-                {roomsError}
-              </p>
-            ) : null}
-
-            <ul className="chat-room-list">
-              {rooms.map(room => (
-                <li key={room.id} className={room.id === activeRoom?.id ? 'is-active' : ''}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveRoomId(room.id);
-                      if (!isDesktop) {
-                        setIsSidebarOpen(false);
-                      }
-                    }}
-                  >
-                    <strong>{room.title}</strong>
-                    <span>{room.description}</span>
-                  </button>
-                </li>
-              ))}
+      <main className="chat-page" role="main">
+        <div className="chat-shell">
+          <aside className="chat-shell__rooms">
+            <header className="chat-shell__rooms-header">
+              <div>
+                <h2>Live rooms</h2>
+                <p>Select a space that matches your focus area.</p>
+              </div>
+              <span className={`chat-status-badge chat-status-badge--${connectionState}`}>{connectionLabel}</span>
+            </header>
+            <ul>
+              {isLoadingRooms
+                ? [...Array(3)].map((_, index) => (
+                    <li key={`room-skeleton-${index}`} className="chat-room chat-room--skeleton" aria-hidden="true">
+                      Loading room…
+                    </li>
+                  ))
+                : rooms.length === 0
+                  ? (
+                    <li className="chat-room chat-room--empty">No rooms available right now.</li>
+                  ) : (
+                    rooms.map((room) => (
+                      <li key={room.id}>
+                        <button
+                          type="button"
+                          className={`chat-room${room.id === activeRoomId ? ' is-active' : ''}`}
+                          onClick={() => setActiveRoomId(room.id)}
+                        >
+                          <strong>{room.name}</strong>
+                          <span>{room.description}</span>
+                        </button>
+                      </li>
+                    ))
+                  )}
             </ul>
+          </aside>
 
-            {isRoomsLoading ? (
-              <p className="chat-status" role="status">
-                Loading rooms…
-              </p>
-            ) : null}
-          </div>
-        </aside>
-        {!isDesktop && isSidebarOpen ? (
-          <button
-            type="button"
-            className="chat-sidebar-backdrop"
-            aria-label="Close menu"
-            onClick={() => setIsSidebarOpen(false)}
-          />
-        ) : null}
-
-        <main className="chat-main">
-          {!isDesktop && (
-            <button
-              type="button"
-              className="chat-sidebar-toggle"
-              onClick={() => setIsSidebarOpen(true)}
-              aria-haspopup="dialog"
-              aria-expanded={isSidebarOpen ? 'true' : 'false'}
-              aria-controls={sidebarId}
-            >
-              Browse rooms
-            </button>
-          )}
-          <header className="chat-header">
-            <div>
-              <h2>{activeRoom?.title ?? 'Live chat'}</h2>
-              <p>{activeRoom?.description}</p>
-            </div>
-            <span className="chat-meta">{connectionLabel}</span>
-          </header>
-
-          {messagesError ? (
-            <div className="chat-status chat-status--error" role="alert">
-              {messagesError}
-            </div>
-          ) : null}
-
-          {socketWarning && !messagesError ? (
-            <div className="chat-status chat-status--info" role="status">
-              {socketWarning}
-            </div>
-          ) : null}
-
-          <div className="chat-stream" ref={streamRef}>
-            {isMessagesLoading ? (
-              <div className="empty-state">
-                <h3>Fetching the latest conversation…</h3>
-                <p>This can take a moment the first time you open a room.</p>
+          <section className="chat-shell__conversation">
+            <header className="conversation-header">
+              <div>
+                <h2>{activeRoom?.name ?? 'Live chat'}</h2>
+                <p>{activeRoom?.description ?? 'Jump into the conversation with fellow builders.'}</p>
               </div>
-            ) : messages.length > 0 ? (
-              messages.map((message) => {
-                const isOwnMessage = Boolean(user?.id && message.authorId && message.authorId === user.id);
-                const messageClassName = ['chat-message', isOwnMessage ? 'chat-message--self' : '']
-                  .filter(Boolean)
-                  .join(' ');
-                const authorLabel = isOwnMessage ? 'You' : message.author ?? 'Participant';
-                const initialsSource =
-                  message.initials && typeof message.initials === 'string' && message.initials.trim()
-                    ? message.initials.trim()
-                    : deriveInitials(authorLabel) || (authorLabel ? authorLabel.slice(0, 1).toUpperCase() : '?');
-                const displayInitials = initialsSource.slice(0, 2);
-                const avatarAlt = isOwnMessage
-                  ? 'Your profile picture'
-                  : `${message.author ?? 'Participant'}'s profile picture`;
+              <span className={`conversation-header__badge conversation-header__badge--${connectionState}`}>
+                {connectionLabel}
+              </span>
+            </header>
 
-                return (
-                  <div key={message.id} className={messageClassName} data-message-id={message.id}>
-                    <div className="chat-message__avatar">
-                      {message.avatar ? (
-                        <img src={message.avatar} alt={avatarAlt} loading="lazy" />
-                      ) : (
-                        <span aria-hidden="true">{displayInitials || '?'}</span>
-                      )}
-                    </div>
-                    <div className="chat-message__body">
-                      <div className="chat-message__meta">
-                        <span className="author">{authorLabel}</span>
-                        {message.timestamp ? (
-                          <span className="timestamp">{message.timestamp}</span>
-                        ) : null}
-                      </div>
-                      {message.reply ? (
-                        <div className="chat-message__reply">
-                          <span className="chat-message__reply-author">{message.reply.author}</span>
-                          {message.reply.content ? <p>{message.reply.content}</p> : null}
-                        </div>
-                      ) : null}
-                      <p>{message.content}</p>
-                    </div>
+            {statusMessage ? <div className="conversation-status">{statusMessage}</div> : null}
+
+            <div className="conversation-stream" ref={streamRef}>
+              {isLoadingMessages ? (
+                <div className="conversation-message conversation-message--skeleton" aria-hidden="true">
+                  <div className="conversation-message__avatar">…</div>
+                  <div className="conversation-message__content">
+                    <header className="conversation-message__meta">
+                      <strong>Connecting</strong>
+                      <time>Now</time>
+                    </header>
+                    <p>Preparing the latest messages…</p>
                   </div>
-                );
-              })
-            ) : (
-              <div className="empty-state">
-                <h3>No messages yet</h3>
-                <p>Start the conversation and invite collaborators from your thread.</p>
-              </div>
-            )}
-          </div>
-
-          {activeRoom?.source === 'api' ? (
-            token ? (
-              <form className="chat-composer" onSubmit={handleSubmit}>
-                <textarea
-                  placeholder={
-                    isSocketConnected
-                      ? 'Share a quick update, resource, or question'
-                      : 'Connecting to live chat…'
-                  }
-                  value={draft}
-                  onChange={event => setDraft(event.target.value)}
-                  onFocus={() => setSendError('')}
-                  disabled={!isSocketConnected || isSending}
-                  maxLength={MESSAGE_CHARACTER_LIMIT}
-                />
-                <div className="chat-composer__footer">
-                  <span className={counterClassName}>{counterText}</span>
-                  <button
-                    type="submit"
-                    className="primary-button"
-                    disabled={!trimmedDraft || !isSocketConnected || isSending || isOverLimit}
-                  >
-                    {isSending ? 'Sending…' : 'Send'}
-                  </button>
                 </div>
-                {sendError ? (
-                  <p className="chat-status chat-status--error" role="alert">
-                    {sendError}
+              ) : messages.length === 0 ? (
+                <div className="conversation-empty">
+                  <h3>No messages yet</h3>
+                  <p>
+                    {token
+                      ? 'Kick off the conversation with a quick note.'
+                      : 'Sign in to join the live chat and see what the community is sharing.'}
                   </p>
-                ) : null}
-              </form>
-            ) : (
-              <div className="chat-composer chat-composer--disabled" aria-disabled="true">
-                <textarea placeholder="Sign in to join the conversation." value="" disabled />
-                <div className="chat-composer__footer">
-                  <span className="chat-composer__counter">{MESSAGE_CHARACTER_LIMIT} characters max</span>
-                  <button type="button" className="primary-button" disabled>
-                    Send
-                  </button>
                 </div>
-              </div>
-            )
-          ) : (
-            <form
-              className="chat-composer"
-              onSubmit={event => {
-                event.preventDefault();
-                const normalizedContent = draft.trim();
-                if (!normalizedContent) return;
+              ) : (
+                messages.map((message) => {
+                  const isSelf =
+                    (user?.id && message.authorId && String(message.authorId) === String(user.id)) ||
+                    (user?.name && message.author && message.author.trim() === user.name.trim());
+                  const initials = message.initials || getInitials(message.author);
 
-                const fallbackMessage = mapApiMessage(
-                  {
-                    id: generateFallbackId(),
-                    author: user?.name ?? user?.username ?? 'You',
-                    user,
-                    user_id: user?.id ?? null,
-                    body: normalizedContent,
-                    created_at: new Date().toISOString(),
-                    group_id: activeRoom?.id,
-                  },
-                  { groupId: activeRoom?.id ?? null, fallbackAuthorId: user?.id ?? 'local-user', baseUrl },
-                );
+                  return (
+                    <div
+                      key={message.id}
+                      className={`conversation-message${isSelf ? ' conversation-message--self' : ''}`}
+                      aria-live="polite"
+                    >
+                      <div className="conversation-message__avatar">{initials}</div>
+                      <div className="conversation-message__content">
+                        <header className="conversation-message__meta">
+                          <strong>{message.author}</strong>
+                          <time>{message.timestamp}</time>
+                        </header>
+                        <p>{message.content}</p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
 
-                if (fallbackMessage) {
-                  setMessages(prev => {
-                    const next = [...prev, fallbackMessage];
-                    next.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
-                    return next;
-                  });
-                }
-                setDraft('');
-              }}
-            >
-              <textarea
-                placeholder="Share a quick update, resource, or question"
-                value={draft}
-                onChange={event => setDraft(event.target.value)}
-                maxLength={MESSAGE_CHARACTER_LIMIT}
-              />
-              <div className="chat-composer__footer">
-                <span className={counterClassName}>{counterText}</span>
-                <button type="submit" className="primary-button" disabled={!trimmedDraft}>
-                  Send
-                </button>
-              </div>
-            </form>
-          )}
-        </main>
-      </div>
-    </section>
+            <footer className={`conversation-composer${(!token || !supportsLiveChat) ? ' conversation-composer--disabled' : ''}`}>
+              <form onSubmit={handleSend}>
+                <label htmlFor="chat-draft" className="sr-only">
+                  Message
+                </label>
+                <textarea
+                  id="chat-draft"
+                  rows={4}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder={
+                    !supportsLiveChat
+                      ? 'Live chat is temporarily unavailable.'
+                      : token
+                        ? 'Share a quick update or link to a thread.'
+                        : 'Sign in to send messages.'
+                  }
+                  disabled={!supportsLiveChat || !token || isSending}
+                  maxLength={MESSAGE_LIMIT + 20}
+                />
+                <div className="conversation-composer__footer">
+                  <span className={composerCounterClass}>
+                    {trimmedDraft
+                      ? charactersRemaining >= 0
+                        ? `${charactersRemaining} characters left`
+                        : `${Math.abs(charactersRemaining)} over the limit`
+                      : `${MESSAGE_LIMIT} characters max`}
+                  </span>
+                  <div className="conversation-composer__actions">
+                    {sendError && <span className="conversation-composer__error">{sendError}</span>}
+                    <button type="submit" className="primary-button" disabled={!supportsLiveChat || !token || isSending}>
+                      {isSending ? 'Sending…' : 'Send'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </footer>
+          </section>
+        </div>
+      </main>
+    </>
   );
 };
 

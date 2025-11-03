@@ -1,31 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useApi } from '@/api';
-import { useAuth } from '@/context/AuthContext';
-import { ensureApiUploadsHost, resolveProfileImageUrl } from '@utils/media';
+import { Link, useParams } from 'react-router-dom';
 import ForumNavbar from '../../components/forum/ForumNavbar';
+import { useApi } from '../../api';
+import { useAuth } from '@/context/AuthContext';
+import { resolveProfileImageUrl, resolveThreadImage } from '@utils/media';
 
 const formatDateTime = (value) => {
-  if (!value) return null;
+  if (!value) return '';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-};
-
-const formatGoalLabel = (category) => {
-  const sdgNumber = category?.sdg_number ?? category?.sdgNumber;
-  if (sdgNumber !== undefined && sdgNumber !== null) {
-    return `Goal ${String(sdgNumber).padStart(2, '0')} – ${category?.name ?? 'Untitled'}`;
-  }
-  return category?.name ?? 'Untitled category';
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
 const getInitials = (name) => {
   if (!name) return 'U';
-  const tokens = name.trim().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return name.slice(0, 2).toUpperCase();
-  if (tokens.length === 1) return tokens[0].slice(0, 2).toUpperCase();
-  return (tokens[0][0] + tokens[1][0]).toUpperCase();
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'U';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 };
 
 const createAvatarDataUrl = (name) => {
@@ -34,65 +32,74 @@ const createAvatarDataUrl = (name) => {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
-const getAvatarUrl = (person, name, baseUrl) => {
-  const resolved = resolveProfileImageUrl(person, baseUrl);
-  if (resolved) return resolved;
-  const fallbackName = name && name.trim().length > 0 ? name : 'Community Member';
-  return createAvatarDataUrl(fallbackName);
+const formatGoalLabel = (category) => {
+  const sdgNumber = category?.sdg_number ?? category?.sdgNumber;
+  if (sdgNumber !== undefined && sdgNumber !== null) {
+    return `Goal ${String(sdgNumber).padStart(2, '0')} • ${category?.name ?? 'Untitled'}`;
+  }
+  return category?.name ?? 'Untitled category';
 };
 
-const resolveThreadImage = (image, baseUrl) => {
-  if (!image) return null;
-  const source =
-    typeof image === 'string'
-      ? image
-      : image?.url ?? image?.src ?? image?.path ?? null;
-  if (!source) return null;
-  if (/^https?:\/\//i.test(source)) return ensureApiUploadsHost(source);
-  const normalizedImage = source.startsWith('/') ? source.slice(1) : source;
+const getAuthorInfo = (entity, baseUrl) => {
+  const candidates = [
+    entity?.author,
+    entity?.author_profile,
+    entity?.authorProfile,
+    entity?.user,
+    entity?.user_profile,
+    entity?.userProfile,
+    entity?.profile,
+    entity?.sender,
+    entity,
+  ];
 
-  if (baseUrl) {
-    try {
-      const parsed = new URL(baseUrl);
-      return ensureApiUploadsHost(`${parsed.origin}/${normalizedImage}`);
-    } catch (error) {
-      console.warn('Failed to parse API base URL for image resolution', error);
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+
+    if (typeof candidate === 'string') {
+      const name = candidate.trim() || 'Community member';
+      return {
+        name,
+        avatar: createAvatarDataUrl(name),
+        initials: getInitials(name),
+      };
+    }
+
+    if (typeof candidate === 'object') {
+      const name = candidate?.name ?? candidate?.username ?? candidate?.displayName ?? 'Community member';
+      const avatar = resolveProfileImageUrl(candidate, baseUrl) ?? createAvatarDataUrl(name);
+      return { name, avatar, initials: getInitials(name) };
     }
   }
 
-  if (typeof window !== 'undefined') {
-    return ensureApiUploadsHost(`${window.location.origin}/${normalizedImage}`);
-  }
-
-  return ensureApiUploadsHost(`/${normalizedImage}`);
+  return {
+    name: 'Community member',
+    avatar: createAvatarDataUrl('Community member'),
+    initials: 'CM',
+  };
 };
+
+const ThreadDetailSkeleton = () => (
+  <section className="thread-hero thread-hero--skeleton">
+    <div className="skeleton-chip" />
+    <div className="skeleton-line skeleton-line--lg" />
+    <div className="skeleton-line" />
+    <div className="skeleton-line skeleton-line--short" />
+  </section>
+);
 
 const ThreadDetailPage = () => {
   const { threadId } = useParams();
-  const navigate = useNavigate();
-  const { threads, baseUrl } = useApi();
   const { user, token } = useAuth();
-
+  const { threads, baseUrl } = useApi();
   const [thread, setThread] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-
+  const [isLoadingThread, setIsLoadingThread] = useState(true);
+  const [threadError, setThreadError] = useState('');
   const [replies, setReplies] = useState([]);
-  const [replyError, setReplyError] = useState('');
-  const [replySuccess, setReplySuccess] = useState('');
-
-  const [likeCount, setLikeCount] = useState(0);
-  const [isLiked, setIsLiked] = useState(false);
-  const [isLiking, setIsLiking] = useState(false);
-  const [likeError, setLikeError] = useState('');
-
-  const [repostCount, setRepostCount] = useState(0);
-  const [isReposted, setIsReposted] = useState(false);
-  const [isReposting, setIsReposting] = useState(false);
-  const [repostError, setRepostError] = useState('');
-
+  const [isLoadingReplies, setIsLoadingReplies] = useState(false);
+  const [replyStatus, setReplyStatus] = useState({ type: null, message: '' });
   const [replyBody, setReplyBody] = useState('');
-  const [isReplying, setIsReplying] = useState(false);
+  const [isSubmittingReply, setIsSubmittingReply] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -101,68 +108,53 @@ const ThreadDetailPage = () => {
   const loadThread = useCallback(async () => {
     if (!threadId) return;
 
-    setIsLoading(true);
-    setError('');
+    setIsLoadingThread(true);
+    setThreadError('');
 
     try {
       const response = await threads.getThread(threadId);
       const fetched = response?.thread ?? response ?? null;
+
       if (!fetched) {
-        setError('Unable to locate this thread.');
         setThread(null);
+        setThreadError('Unable to locate this thread.');
         return;
       }
+
       setThread(fetched);
-      setLikeCount(fetched?.counts?.likes ?? 0);
-      setRepostCount(fetched?.counts?.reposts ?? 0);
-      const liked = Boolean(
-        fetched?.viewerHasLiked ??
-          fetched?.viewer_has_liked ??
-          fetched?.hasLiked ??
-          fetched?.liked ??
-          fetched?.isLiked ??
-          fetched?.is_liked ??
-          fetched?.isLikedByUser ??
-          fetched?.liked_by_user,
-      );
-      setIsLiked(liked);
-      const reposted = Boolean(
-        fetched?.viewerHasReposted ??
-          fetched?.viewer_has_reposted ??
-          fetched?.hasReposted ??
-          fetched?.reposted ??
-          fetched?.isReposted ??
-          fetched?.is_reposted ??
-          fetched?.isRepostedByUser ??
-          fetched?.reposted_by_user,
-      );
-      setIsReposted(reposted);
-    } catch (caughtError) {
-      console.error('Failed to load thread detail', caughtError);
+    } catch (error) {
+      console.error('Failed to load thread detail', error);
       const message =
-        caughtError?.status === 404
+        error?.status === 404
           ? 'This thread was not found or may have been removed.'
-          : caughtError?.data?.message ||
-            caughtError?.data?.error ||
-            caughtError?.message ||
-            'Unable to load this thread right now.';
-      setError(message);
+          : error?.data?.message || error?.data?.error || error?.message || 'Unable to load this thread right now.';
+      setThreadError(message);
+      setThread(null);
     } finally {
-      setIsLoading(false);
+      setIsLoadingThread(false);
     }
   }, [threadId, threads]);
 
   const loadReplies = useCallback(async () => {
-    if (!threadId) return;
+    if (!threadId) {
+      setReplies([]);
+      return;
+    }
+
+    setIsLoadingReplies(true);
+
     try {
       const response = await threads.listReplies(threadId, { page: 1, pageSize: 20 });
-      setReplies(response?.data ?? []);
-      setReplyError('');
-    } catch (caughtError) {
-      console.error('Failed to load replies', caughtError);
-      const message =
-        caughtError?.data?.message || caughtError?.data?.error || caughtError?.message || 'Unable to load replies.';
-      setReplyError(message);
+      const data = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response?.messages)
+          ? response.messages
+          : [];
+      setReplies(data);
+    } catch (error) {
+      console.error('Failed to load replies', error);
+    } finally {
+      setIsLoadingReplies(false);
     }
   }, [threadId, threads]);
 
@@ -178,317 +170,263 @@ const ThreadDetailPage = () => {
     () => resolveThreadImage(thread?.image ?? thread?.image_url, baseUrl),
     [thread?.image, thread?.image_url, baseUrl],
   );
-  const hasImage = Boolean(threadImageUrl);
-  const formattedBody = useMemo(() => thread?.body ?? '', [thread?.body]);
 
-  const canEdit = user?.id && thread?.author_id && user.id === thread.author_id;
-  const authorName = thread?.author?.name ?? thread?.author?.username ?? 'Unknown author';
-  const authorUsername = thread?.author?.username ?? null;
-  const authorAvatar = getAvatarUrl(thread?.author, authorName, baseUrl);
-  const postedAtLabel = formatDateTime(thread?.created_at ?? thread?.createdAt);
-
-  const handleToggleLike = async () => {
-    if (!threadId) return;
-    if (!token) {
-      setLikeError('Please sign in to like this thread.');
-      return;
-    }
-    if (isLiking) return;
-
-    setIsLiking(true);
-    setLikeError('');
-
-    try {
-      if (isLiked) {
-        await threads.unlikeThread(threadId);
-        setIsLiked(false);
-        setLikeCount((current) => (current > 0 ? current - 1 : 0));
-      } else {
-        await threads.likeThread(threadId);
-        setIsLiked(true);
-        setLikeCount((current) => current + 1);
-      }
-    } catch (caughtError) {
-      console.error('Failed to toggle like', caughtError);
-      const message =
-        caughtError?.data?.message ||
-        caughtError?.data?.error ||
-        caughtError?.message ||
-        'Unable to update your like right now.';
-      setLikeError(message);
-    } finally {
-      setIsLiking(false);
-    }
-  };
-
-  const handleToggleRepost = async () => {
-    if (!threadId) return;
-    if (!token) {
-      setRepostError('Please sign in to repost this thread.');
-      return;
-    }
-    if (isReposting) return;
-
-    setIsReposting(true);
-    setRepostError('');
-
-    try {
-      if (isReposted) {
-        await threads.removeRepost(threadId);
-        setIsReposted(false);
-        setRepostCount((current) => (current > 0 ? current - 1 : 0));
-      } else {
-        await threads.repostThread(threadId);
-        setIsReposted(true);
-        setRepostCount((current) => current + 1);
-      }
-    } catch (caughtError) {
-      console.error('Failed to toggle repost', caughtError);
-      const message =
-        caughtError?.data?.message ||
-        caughtError?.data?.error ||
-        caughtError?.message ||
-        'Unable to update your repost right now.';
-      setRepostError(message);
-    } finally {
-      setIsReposting(false);
-    }
+  const threadAuthor = useMemo(() => getAuthorInfo(thread ?? {}, baseUrl), [thread, baseUrl]);
+  const bodySegments = useMemo(
+    () =>
+      (thread?.body ?? '')
+        .split(/\n{2,}|\r\n\r\n/)
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0),
+    [thread?.body],
+  );
+  const postedAt = formatDateTime(thread?.created_at ?? thread?.createdAt);
+  const categories = Array.isArray(thread?.categories) ? thread.categories : [];
+  const tags = Array.isArray(thread?.tags) ? thread.tags.filter(Boolean) : [];
+  const counts = {
+    likes: thread?.counts?.likes ?? 0,
+    replies:
+      thread?.counts?.replies ??
+      (Array.isArray(thread?.replies) ? thread.replies.length : replies.length),
+    reposts: thread?.counts?.reposts ?? 0,
   };
 
   const handleReplySubmit = async (event) => {
     event.preventDefault();
-    if (!threadId) return;
     if (!token) {
-      setReplyError('Please sign in to reply.');
-      return;
-    }
-    const trimmed = replyBody.trim();
-    if (!trimmed) {
-      setReplyError('Your reply cannot be empty.');
+      setReplyStatus({ type: 'error', message: 'Sign in to reply to this thread.' });
       return;
     }
 
-    setIsReplying(true);
-    setReplyError('');
-    setReplySuccess('');
+    const content = replyBody.trim();
+    if (!content) {
+      setReplyStatus({ type: 'error', message: 'Add a short message before sending.' });
+      return;
+    }
+
+    if (!threadId) {
+      setReplyStatus({ type: 'error', message: 'This thread is unavailable.' });
+      return;
+    }
 
     try {
-      await threads.createReply(threadId, { body: trimmed });
+      setIsSubmittingReply(true);
+      setReplyStatus({ type: null, message: '' });
+
+      await threads.createReply(threadId, { body: content });
+
       setReplyBody('');
-      setReplySuccess('Reply posted successfully.');
-      await loadReplies();
-      await loadThread();
-    } catch (caughtError) {
-      console.error('Failed to post reply', caughtError);
+      setReplyStatus({ type: 'success', message: 'Reply posted.' });
+      loadReplies();
+    } catch (error) {
+      console.error('Failed to submit reply', error);
       const message =
-        caughtError?.data?.message ||
-        caughtError?.data?.error ||
-        caughtError?.message ||
-        'Unable to share your reply right now.';
-      setReplyError(message);
+        error?.data?.message ||
+        error?.data?.error ||
+        error?.message ||
+        'Unable to send your reply right now.';
+      setReplyStatus({ type: 'error', message });
     } finally {
-      setIsReplying(false);
+      setIsSubmittingReply(false);
     }
   };
 
-  return (
-    <section className="themed-page forum-page thread-detail-page">
-      <title>Thread Detail • SDG Forum</title>
-      <ForumNavbar />
+  const repliesEmpty = !isLoadingReplies && replies.length === 0;
 
-      <div className="thread-detail">
-        <div className="thread-detail__header">
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={() => navigate(-1)}
-          >
-            ← Back
-          </button>
+  return (
+    <>
+      <ForumNavbar />
+      <main className="forum-layout thread-detail-page">
+        <div className="thread-return">
           <Link to="/forum/threads" className="ghost-button">
-            View all threads
+            ← Back to threads
           </Link>
         </div>
 
-        {isLoading ? (
-          <div className="thread-detail__loading">Loading thread…</div>
-        ) : error ? (
-          <div className="forum-error">{error}</div>
-        ) : !thread ? (
-          <div className="thread-empty">We could not load this thread.</div>
-        ) : (
-          <article className={`thread-detail__card ${hasImage ? '' : 'thread-detail__card--no-media'}`}>
-            {hasImage ? (
-              <div className="thread-detail__media">
-                <img src={threadImageUrl} alt={thread.title ?? 'Thread cover'} loading="lazy" />
-              </div>
-            ) : null}
-
-            <header className="thread-detail__meta">
-              <div className="thread-detail__categories">
-                {(thread.categories ?? []).map((category) => (
-                  <span key={category.id} className="thread-card__goal">
-                    {formatGoalLabel(category)}
-                  </span>
-                ))}
-              </div>
-              <span className="thread-card__status">
-                {thread.status ?? 'Active'}
-              </span>
-            </header>
-
-            <h1>{thread.title ?? 'Untitled thread'}</h1>
-
-            <div className="thread-detail__author">
-              <div className="thread-detail__author-meta">
-                <img
-                  src={authorAvatar}
-                  alt={`Avatar of ${authorName}`}
-                  className="thread-detail__avatar"
-                />
-                <div className="thread-detail__author-info">
-                  <span>{authorName}</span>
-                  {authorUsername ? <small>@{authorUsername}</small> : null}
-                </div>
-              </div>
-              {postedAtLabel ? (
-                <time dateTime={thread.created_at ?? thread.createdAt}>{postedAtLabel}</time>
-              ) : null}
-            </div>
-
-            <div className="thread-detail__body">
-              {formattedBody.split('\n').map((paragraph, index) => (
-                <p key={index}>{paragraph}</p>
-              ))}
-            </div>
-
-            {(thread.tags ?? []).length > 0 ? (
-              <div className="preview-tags">
-                {thread.tags.filter(Boolean).map((tag) => (
-                  <span key={tag} className="preview-tag">
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            <footer className="thread-detail__footer">
-              <div className="thread-card__counts">
-                <span>{likeCount} {likeCount === 1 ? 'like' : 'likes'}</span>
-                <span>{repostCount} {repostCount === 1 ? 'repost' : 'reposts'}</span>
-                <span>{thread.counts?.replies ?? replies.length} replies</span>
-              </div>
-              <div className="thread-detail__actions">
-                <button
-                  type="button"
-                  className={`ghost-button thread-like-button ${isLiked ? 'is-liked' : ''}`}
-                  onClick={handleToggleLike}
-                  disabled={isLiking}
-                >
-                  {isLiked ? '♥ Liked' : '♡ Like'}
-                </button>
-                <button
-                  type="button"
-                  className={`ghost-button thread-repost-button ${isReposted ? 'is-reposted' : ''}`}
-                  onClick={handleToggleRepost}
-                  disabled={isReposting}
-                >
-                  {isReposted ? '⟲ Reposted' : '⟳ Repost'}
-                </button>
-                {canEdit ? <span className="thread-detail__owner">Your thread</span> : null}
-              </div>
-            </footer>
-            {likeError ? <div className="form-error thread-detail__error">{likeError}</div> : null}
-            {repostError ? <div className="form-error thread-detail__error">{repostError}</div> : null}
-          </article>
+        {threadError && (
+          <div className="form-feedback form-feedback--error thread-detail__alert">{threadError}</div>
         )}
 
-        {replyError ? <div className="forum-error">{replyError}</div> : null}
-        {replySuccess ? <div className="thread-detail__success">{replySuccess}</div> : null}
+        {isLoadingThread ? (
+          <ThreadDetailSkeleton />
+        ) : thread ? (
+          <>
+            <section className="thread-hero">
+              <div className="thread-hero__labels">
+                {categories.length > 0 ? (
+                  categories.map((category) => (
+                    <span key={category?.id ?? category?.name} className="thread-hero__chip">
+                      {formatGoalLabel(category)}
+                    </span>
+                  ))
+                ) : (
+                  <span className="thread-hero__chip thread-hero__chip--muted">Cross-goal</span>
+                )}
+              </div>
+              <h1>{thread?.title ?? 'Untitled thread'}</h1>
+              {bodySegments[0] && <p className="thread-hero__summary">{bodySegments[0]}</p>}
 
-        {replies.length > 0 ? (
-          <section className="thread-detail__replies">
-            <h2>Replies</h2>
-            <ul>
-              {replies.map((reply) => {
-                const replyAuthorName = reply.author?.name ?? reply.author?.username ?? 'Contributor';
-                const replyAuthorUsername = reply.author?.username ?? null;
-                const replyAvatar = getAvatarUrl(reply.author, replyAuthorName, baseUrl);
-                const replyTimestamp = formatDateTime(reply.created_at ?? reply.createdAt);
+              <div className="thread-hero__meta">
+                <div className="thread-hero__author">
+                  <img src={threadAuthor.avatar} alt={threadAuthor.name} />
+                  <div>
+                    <span>{threadAuthor.name}</span>
+                    {postedAt && <small>Posted {postedAt}</small>}
+                  </div>
+                </div>
+                <dl className="thread-hero__stats">
+                  <div>
+                    <dt>Appreciations</dt>
+                    <dd>{counts.likes}</dd>
+                  </div>
+                  <div>
+                    <dt>Replies</dt>
+                    <dd>{counts.replies}</dd>
+                  </div>
+                  <div>
+                    <dt>Shares</dt>
+                    <dd>{counts.reposts}</dd>
+                  </div>
+                </dl>
+              </div>
+            </section>
 
-                return (
-                  <li key={reply.id}>
-                    <header className="thread-reply-header">
-                      <div className="thread-reply-author">
-                        <img
-                          src={replyAvatar}
-                          alt={`Avatar of ${replyAuthorName}`}
-                          className="thread-reply-avatar"
-                        />
-                        <div>
-                          <span>{replyAuthorName}</span>
-                          {replyAuthorUsername ? <small>@{replyAuthorUsername}</small> : null}
-                        </div>
-                      </div>
-                      {replyTimestamp ? (
-                        <time dateTime={reply.created_at ?? reply.createdAt}>{replyTimestamp}</time>
-                      ) : null}
-                    </header>
-                    <div className="thread-reply-body">
-                      {(reply.body ?? '').split('\n').map((paragraph, index) => (
-                        <p key={index}>{paragraph}</p>
+            <div className="thread-detail__layout">
+              <article className="thread-article">
+                {threadImageUrl && (
+                  <figure className="thread-article__media">
+                    <img src={threadImageUrl} alt="" />
+                    {thread?.image_caption && <figcaption>{thread.image_caption}</figcaption>}
+                  </figure>
+                )}
+
+                <div className="thread-article__body">
+                  {bodySegments.map((segment, index) => (
+                    <p key={`segment-${index}`}>{segment}</p>
+                  ))}
+                </div>
+              </article>
+
+              <aside className="thread-sidebar">
+                <div className="thread-sidebar__card">
+                  <h3>Thread details</h3>
+                  <ul>
+                    <li>
+                      <span>Posted</span>
+                      <strong>{postedAt || 'Not available'}</strong>
+                    </li>
+                    <li>
+                      <span>Category</span>
+                      <strong>
+                        {categories.length > 0 ? categories.map((cat) => cat?.name).filter(Boolean).join(', ') : 'General'}
+                      </strong>
+                    </li>
+                    <li>
+                      <span>Status</span>
+                      <strong>{thread?.status ?? 'Published'}</strong>
+                    </li>
+                  </ul>
+                </div>
+
+                {tags.length > 0 && (
+                  <div className="thread-sidebar__card">
+                    <h3>Tags</h3>
+                    <div className="thread-sidebar__tags">
+                      {tags.map((tag) => (
+                        <span key={tag}>#{tag}</span>
                       ))}
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ) : thread && !isLoading && !error ? (
-          <div className="thread-empty">This thread has no replies yet.</div>
-        ) : null}
-
-        <section className="thread-reply-form">
-          <h2>Join the conversation</h2>
-          {token ? (
-            <form onSubmit={handleReplySubmit}>
-              <label htmlFor="thread-reply">Your reply</label>
-              <textarea
-                id="thread-reply"
-                rows={4}
-                placeholder="Share feedback, resources, or next steps."
-                value={replyBody}
-                onChange={(event) => setReplyBody(event.target.value)}
-                required
-              />
-              <div className="thread-reply-actions">
-                <button type="submit" className="primary-button" disabled={isReplying}>
-                  {isReplying ? 'Posting…' : 'Post reply'}
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => {
-                    setReplyBody('');
-                    setReplyError('');
-                    setReplySuccess('');
-                  }}
-                  disabled={isReplying || replyBody.length === 0}
-                >
-                  Clear
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className="thread-reply-login">
-              <p>
-                Please <Link to="/auth/login">sign in</Link> or <Link to="/auth/register">create an account</Link> to reply to this thread.
-              </p>
+                  </div>
+                )}
+              </aside>
             </div>
-          )}
-        </section>
-      </div>
-    </section>
+
+            <section className="thread-replies">
+              <header className="thread-replies__header">
+                <div>
+                  <h2>Replies</h2>
+                  <p>
+                    {counts.replies > 0
+                      ? 'Join the conversation or help answer an open question.'
+                      : 'Be the first to share feedback or add your perspective.'}
+                  </p>
+                </div>
+                <span className="thread-replies__count">{counts.replies}</span>
+              </header>
+
+              {token ? (
+                <form className="reply-composer" onSubmit={handleReplySubmit}>
+                  <label htmlFor="reply-body" className="sr-only">
+                    Reply
+                  </label>
+                  <textarea
+                    id="reply-body"
+                    value={replyBody}
+                    onChange={(e) => setReplyBody(e.target.value)}
+                    placeholder="Share an insight, drop a resource, or ask a follow-up question."
+                    rows={4}
+                    disabled={isSubmittingReply}
+                  />
+                  <div className="reply-composer__footer">
+                    {replyStatus.message && (
+                      <span className={`reply-status reply-status--${replyStatus.type}`}>{replyStatus.message}</span>
+                    )}
+                    <button type="submit" className="primary-button" disabled={isSubmittingReply}>
+                      {isSubmittingReply ? 'Submitting…' : 'Post reply'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="reply-auth">
+                  <p>Sign in to reply to this thread and follow the conversation.</p>
+                  <Link to="/auth/login" className="primary-button">
+                    Sign in
+                  </Link>
+                </div>
+              )}
+
+              <ul className="reply-list">
+                {isLoadingReplies && <li className="reply-item reply-item--skeleton" />}
+                {replies.map((reply) => {
+                  const author = getAuthorInfo(reply, baseUrl);
+                  const replyPostedAt = formatDateTime(reply?.created_at ?? reply?.createdAt);
+                  const replyBodySegments = (reply?.body ?? '')
+                    .split(/\n+/)
+                    .map((line) => line.trim())
+                    .filter(Boolean);
+
+                  return (
+                    <li key={reply?.id ?? `${reply?.created_at}-${Math.random()}`} className="reply-item">
+                      <div className="reply-item__avatar">
+                        <img src={author.avatar} alt={author.name} />
+                      </div>
+                      <div className="reply-item__body">
+                        <header>
+                          <strong>{author.name}</strong>
+                          {replyPostedAt && <time dateTime={reply?.created_at ?? reply?.createdAt}>{replyPostedAt}</time>}
+                        </header>
+                        <div className="reply-item__content">
+                          {replyBodySegments.map((segment, index) => (
+                            <p key={`reply-${reply?.id}-segment-${index}`}>{segment}</p>
+                          ))}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {repliesEmpty && (
+                <div className="reply-empty">
+                  <h3>No replies yet</h3>
+                  <p>Have a related project or question? Leave a note so others can build on it.</p>
+                </div>
+              )}
+            </section>
+          </>
+        ) : null}
+      </main>
+    </>
   );
 };
 

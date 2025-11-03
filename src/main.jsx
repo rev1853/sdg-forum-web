@@ -1,6 +1,7 @@
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './styles.css';
+import './css/forum.css';
 
 import { ApiProvider, getStoredToken, storeToken } from '@/api';
 import { Provider } from '@/components/setup/provider';

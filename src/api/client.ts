@@ -11,8 +11,17 @@ const sanitizeBaseUrl = (value: string | undefined | null): string | null => {
 
     try {
         const parsed = new URL(trimmed);
-        const normalizedPath = parsed.pathname.endsWith('/') ? parsed.pathname.slice(0, -1) : parsed.pathname;
-        return `${parsed.origin}${normalizedPath}`;
+        let normalizedPath = parsed.pathname.replace(/\/+$/, '');
+
+        if (normalizedPath === '/' || normalizedPath === '') {
+            normalizedPath = '';
+        }
+
+        if (normalizedPath === '/api') {
+            normalizedPath = '';
+        }
+
+        return normalizedPath ? `${parsed.origin}${normalizedPath}` : parsed.origin;
     } catch {
         return null;
     }

@@ -6,20 +6,79 @@ const PROFILE_IMAGE_KEYS = [
   'profilePicture',
   'profile_picture_url',
   'profilePictureUrl',
+  'profile_picture_path',
+  'profilePicturePath',
   'profile_image',
   'profileImage',
   'avatar',
   'avatar_url',
   'avatarUrl',
+  'avatar_path',
+  'avatarPath',
   'google_picture',
   'googlePicture',
+  'picture',
+  'picture_url',
+  'pictureUrl',
   'photo',
   'photo_url',
   'photoUrl',
   'image',
   'image_url',
   'imageUrl',
+  'thumbnail',
+  'thumbnail_url',
+  'thumbnailUrl',
 ];
+
+const OBJECT_MEDIA_KEYS = [
+  'url',
+  'src',
+  'path',
+  'href',
+  'link',
+  'secure_url',
+  'secureUrl',
+  'downloadUrl',
+  'download_url',
+  'default',
+];
+
+const NESTED_PROFILE_OBJECT_KEYS = [
+  'profile',
+  'profile_data',
+  'profileData',
+  'author',
+  'author_profile',
+  'authorProfile',
+  'user',
+  'user_profile',
+  'userProfile',
+  'owner',
+  'owner_profile',
+  'ownerProfile',
+  'member',
+  'member_profile',
+  'memberProfile',
+  'creator',
+  'creator_profile',
+  'creatorProfile',
+  'account',
+  'account_profile',
+  'accountProfile',
+  'sender',
+  'sender_profile',
+  'senderProfile',
+  'participant',
+  'participant_profile',
+  'participantProfile',
+  'person',
+  'details',
+  'info',
+  'data',
+];
+
+const STRING_KEY_INFIXES = ['avatar', 'profile', 'picture', 'photo', 'image'];
 
 /**
  * Ensure media URLs that point to the legacy upload host use the API domain instead.
@@ -91,45 +150,179 @@ export const resolveMediaUrl = (source, baseUrl) => {
   return ensureApiUploadsHost(`/${normalised}`);
 };
 
-/**
- * Resolve the best available profile image URL for a given user/person object.
- */
-export const resolveProfileImageUrl = (person, baseUrl) => {
-  if (!person || typeof person !== 'object') {
+const normaliseObjectMedia = (value, baseUrl) => {
+  if (!value || typeof value !== 'object') {
     return null;
   }
 
-  const candidates = [];
+  // Guard against File/Blob instances which need special handling at upload time.
+  if (typeof File !== 'undefined' && value instanceof File) return null;
+  if (typeof Blob !== 'undefined' && value instanceof Blob) return null;
 
-  for (const key of PROFILE_IMAGE_KEYS) {
-    const value = person[key];
-    if (typeof value === 'string' && value.trim().length > 0) {
-      candidates.push(value);
-    } else if (value && typeof value === 'object') {
-      if (typeof value.url === 'string') candidates.push(value.url);
-      if (typeof value.src === 'string') candidates.push(value.src);
-      if (typeof value.path === 'string') candidates.push(value.path);
+  for (const key of OBJECT_MEDIA_KEYS) {
+    const candidate = value[key];
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      const resolved = resolveMediaUrl(candidate, baseUrl);
+      if (resolved) return resolved;
     }
   }
 
-  const nestedProfile = person.profile;
-  if (nestedProfile && typeof nestedProfile === 'object') {
-    for (const key of PROFILE_IMAGE_KEYS) {
-      const value = nestedProfile[key];
-      if (typeof value === 'string' && value.trim().length > 0) {
-        candidates.push(value);
-      } else if (value && typeof value === 'object') {
-        if (typeof value.url === 'string') candidates.push(value.url);
-        if (typeof value.src === 'string') candidates.push(value.src);
-        if (typeof value.path === 'string') candidates.push(value.path);
+  return null;
+};
+
+const shouldExploreKey = (key) => {
+  if (!key || typeof key !== 'string') return false;
+  const lowerKey = key.toLowerCase();
+  if (NESTED_PROFILE_OBJECT_KEYS.some((entry) => entry && lowerKey === entry.toLowerCase())) {
+    return true;
+  }
+  return STRING_KEY_INFIXES.some((fragment) => lowerKey.includes(fragment));
+};
+
+const objectHasMediaHints = (value) => {
+  if (!value || typeof value !== 'object') return false;
+  const keys = Object.keys(value);
+  if (keys.length === 0) return false;
+  return keys.some((childKey) => {
+    const lower = String(childKey).toLowerCase();
+    return (
+      PROFILE_IMAGE_KEYS.some((profileKey) => profileKey && lower === profileKey.toLowerCase()) ||
+      OBJECT_MEDIA_KEYS.some((objectKey) => objectKey && lower === objectKey.toLowerCase()) ||
+      STRING_KEY_INFIXES.some((fragment) => lower.includes(fragment))
+    );
+  });
+};
+
+const normaliseMediaCandidate = (candidate, baseUrl) => {
+  if (!candidate) {
+    return null;
+  }
+
+  if (typeof candidate === 'string') {
+    return resolveMediaUrl(candidate, baseUrl);
+  }
+
+  if (Array.isArray(candidate)) {
+    for (const entry of candidate) {
+      const resolved = normaliseMediaCandidate(entry, baseUrl);
+      if (resolved) {
+        return resolved;
       }
     }
+    return null;
   }
 
-  for (const candidate of candidates) {
-    const resolved = resolveMediaUrl(candidate, baseUrl);
+  if (typeof candidate === 'object') {
+    const resolved = normaliseObjectMedia(candidate, baseUrl);
     if (resolved) {
       return resolved;
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Resolve the best available profile image URL for a given user/person object.
+ */
+export const resolveThreadImage = (image, baseUrl) => {
+  if (!image) return null;
+
+  const source =
+    typeof image === 'string'
+      ? image
+      : image?.url ?? image?.src ?? image?.path ?? image?.location ?? null;
+
+  if (!source) return null;
+  if (/^https?:\/\//i.test(source)) return ensureApiUploadsHost(source);
+
+  const normalized = source.startsWith('/') ? source.slice(1) : source;
+
+  if (baseUrl) {
+    try {
+      const parsed = new URL(baseUrl);
+      return ensureApiUploadsHost(`${parsed.origin}/${normalized}`);
+    } catch (error) {
+      console.warn('Failed to parse API base URL for image resolution', error);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    return ensureApiUploadsHost(`${window.location.origin}/${normalized}`);
+  }
+
+  return ensureApiUploadsHost(`/${normalized}`);
+};
+
+export const resolveProfileImageUrl = (person, baseUrl) => {
+  if (!person || typeof person !== 'object') {
+    return normaliseMediaCandidate(person, baseUrl);
+  }
+
+  const queue = Array.isArray(person) ? [...person] : [person];
+  const visited = typeof WeakSet === 'function' ? new WeakSet() : new Set();
+  const maxIterations = 50;
+  let processed = 0;
+
+  while (queue.length > 0 && processed < maxIterations) {
+    const current = queue.shift();
+    processed += 1;
+
+    if (!current) {
+      continue;
+    }
+
+    const resolvedDirect = normaliseMediaCandidate(current, baseUrl);
+    if (resolvedDirect) {
+      return resolvedDirect;
+    }
+
+    if (typeof current !== 'object') {
+      continue;
+    }
+
+    if (visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+
+    for (const key of PROFILE_IMAGE_KEYS) {
+      if (!Object.prototype.hasOwnProperty.call(current, key)) {
+        continue;
+      }
+
+      const resolved = normaliseMediaCandidate(current[key], baseUrl);
+      if (resolved) {
+        return resolved;
+      }
+    }
+
+    for (const [key, value] of Object.entries(current)) {
+      if (!value) {
+        continue;
+      }
+
+      if (typeof value === 'string') {
+        const lowerKey = key.toLowerCase();
+        if (STRING_KEY_INFIXES.some((fragment) => lowerKey.includes(fragment))) {
+          const resolved = normaliseMediaCandidate(value, baseUrl);
+          if (resolved) {
+            return resolved;
+          }
+        }
+        continue;
+      }
+
+      if (Array.isArray(value)) {
+        queue.push(...value);
+        continue;
+      }
+
+      if (typeof value === 'object') {
+        if (shouldExploreKey(key) || objectHasMediaHints(value)) {
+          queue.push(value);
+        }
+      }
     }
   }
 

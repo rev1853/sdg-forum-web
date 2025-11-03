@@ -29,7 +29,6 @@ const LandingPage = () => {
 
       {isMobile && (
         <div className="mobile-hero-background-container">
-          <img src={heroImage} alt="Hero background" className="mobile-hero-background-image" />
         </div>
       )}
 

@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useApi } from '@/api';
 import { resolveProfileImageUrl } from '@utils/media';
 import { useAuth } from '../../context/AuthContext';
 
 const ForumNavbar = () => {
-  const location = useLocation();
-  const [isDesktop, setIsDesktop] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 960 : true));
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileTriggerRef = useRef(null);
@@ -18,169 +16,115 @@ const ForumNavbar = () => {
   const links = [
     { to: '/forum/threads', label: 'Threads' },
     { to: '/forum/chat', label: 'Live Chat' },
-    { to: '/forum/create', label: 'Create Thread' },
-    { to: '/terms', label: 'Terms' }
   ];
 
   useEffect(() => {
-    setIsMenuOpen(false);
-    setIsProfileMenuOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
-    const updateViewport = () => {
-      const desktop = typeof window !== 'undefined' ? window.innerWidth >= 960 : true;
-      setIsDesktop(desktop);
-      if (desktop) {
-        setIsMenuOpen(false);
-        setIsProfileMenuOpen(false);
-      }
+    const closeMenus = () => {
+      setIsMenuOpen(false);
+      setIsProfileMenuOpen(false);
     };
-
-    updateViewport();
-    window.addEventListener('resize', updateViewport);
-    return () => window.removeEventListener('resize', updateViewport);
+    window.addEventListener('resize', closeMenus);
+    return () => window.removeEventListener('resize', closeMenus);
   }, []);
 
   useEffect(() => {
-    if (isMenuOpen) {
-      setIsProfileMenuOpen(false);
-    }
-  }, [isMenuOpen]);
-
-  useEffect(() => {
     if (!isProfileMenuOpen) return undefined;
-
-    const handleClickOutside = event => {
+    const handleClickOutside = (event) => {
       if (
-        !profileMenuRef.current ||
-        profileMenuRef.current.contains(event.target) ||
-        profileTriggerRef.current?.contains(event.target)
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(event.target) &&
+        profileTriggerRef.current &&
+        !profileTriggerRef.current.contains(event.target)
       ) {
-        return;
-      }
-      setIsProfileMenuOpen(false);
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    const handleKeyDown = event => {
-      if (event.key === 'Escape') {
         setIsProfileMenuOpen(false);
       }
     };
-
-    document.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isProfileMenuOpen]);
 
   const profileImage = useMemo(() => resolveProfileImageUrl(user, baseUrl), [user, baseUrl]);
-  const profileInitials = user?.name
-    ?.split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(part => part[0]?.toUpperCase())
-    .join('');
+  const profileInitials = useMemo(() => {
+    if (!user?.name) return 'U';
+    const parts = user.name.split(' ').filter(Boolean);
+    if (parts.length === 0) return 'U';
+    if (parts.length === 1) return parts[0][0].toUpperCase();
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }, [user?.name]);
 
   const handleSignOut = () => {
     logout();
-    setIsMenuOpen(false);
-    setIsProfileMenuOpen(false);
     navigate('/');
   };
 
   return (
-    <header className="forum-navbar">
-      <div className="forum-navbar__content">
-        <Link to="/" className="forum-navbar__brand">
-          <span className="brand-accent">SDG</span> Forum
-        </Link>
-
-        <div className="forum-navbar__actions">
-          <button
-            type="button"
-            className={`forum-navbar__toggle ${isMenuOpen ? 'forum-navbar__toggle--open' : ''}`}
-            aria-controls="forum-navigation"
-            aria-expanded={isMenuOpen}
-            onClick={() => setIsMenuOpen(open => !open)}
-          >
-            <span className="sr-only">Toggle forum menu</span>
-            <span className="forum-navbar__toggle-bar" aria-hidden="true" />
-            <span className="forum-navbar__toggle-bar" aria-hidden="true" />
-            <span className="forum-navbar__toggle-bar" aria-hidden="true" />
-          </button>
-
-          <nav
-            id="forum-navigation"
-            className={`forum-navbar__links ${isMenuOpen ? 'is-open' : ''}`}
-            aria-hidden={isDesktop ? undefined : !isMenuOpen}
-          >
-            {links.map(link => {
-              const isActive = location.pathname === link.to;
-              return (
-                <Link key={link.to} to={link.to} className={`forum-navbar__link ${isActive ? 'is-active' : ''}`}>
-                  {link.label}
-                </Link>
-              );
-            })}
-
-            {!user && (
-              <Link to="/auth/login" className="forum-navbar__link forum-navbar__link--cta">
-                Sign in
-              </Link>
-            )}
-
-            {user && (
-              <button type="button" className="forum-navbar__link forum-navbar__link--mobile" onClick={handleSignOut}>
-                Sign out
-              </button>
-            )}
+    <header className="top-navbar">
+      <div className="top-navbar__container">
+        <div className="top-navbar__left">
+          <Link to="/" className="top-navbar__brand">
+            <span className="brand-accent">SDG</span> Forum
+          </Link>
+          <nav className="top-navbar__nav">
+            {links.map(({ to, label }) => (
+              <NavLink key={to} to={to} className={({ isActive }) => `top-navbar__link ${isActive ? 'is-active' : ''}`}>
+                {label}
+              </NavLink>
+            ))}
           </nav>
+        </div>
 
-          {user && (
-            <div className="forum-profile-menu">
+        <div className="top-navbar__right">
+          <Link to="/forum/create" className="primary-button">
+            Create Thread
+          </Link>
+          {user ? (
+            <div className="profile-menu">
               <button
-                type="button"
-                className={`forum-profile-trigger ${isProfileMenuOpen ? 'is-open' : ''}`}
-                onClick={() => setIsProfileMenuOpen(open => !open)}
-                aria-haspopup="true"
-                aria-expanded={isProfileMenuOpen}
                 ref={profileTriggerRef}
+                type="button"
+                className="profile-menu__trigger"
+                onClick={() => setIsProfileMenuOpen(p => !p)}
               >
-                <span className="forum-profile-avatar" aria-hidden="true">
-                  {profileImage ? (
-                    <img src={profileImage} alt="Your profile" />
-                  ) : (
-                    profileInitials || 'U'
-                  )}
-                </span>
-                <span className="forum-profile-name">{user.name}</span>
+                <img src={profileImage} alt="Profile" className="profile-menu__avatar" />
               </button>
-
-              <div
-                className={`forum-profile-dropdown ${isProfileMenuOpen ? 'is-open' : ''}`}
-                ref={profileMenuRef}
-                role="menu"
-              >
-                <div className="forum-profile-details" role="none">
-                  <span className="forum-profile-details__name">{user.name}</span>
-                  <span className="forum-profile-details__email">{user.email}</span>
+              {isProfileMenuOpen && (
+                <div ref={profileMenuRef} className="profile-menu__dropdown">
+                  <div className="profile-menu__user-info">
+                    <img src={profileImage} alt="Profile" className="profile-menu__avatar--large" />
+                    <div className="profile-menu__user-details">
+                      <span className="profile-menu__user-name">{user.name}</span>
+                      <span className="profile-menu__user-email">{user.email}</span>
+                    </div>
+                  </div>
+                  <Link to="/profile" className="profile-menu__link">Profile</Link>
+                  <button onClick={handleSignOut} className="profile-menu__button">Sign Out</button>
                 </div>
-                <Link
-                  to="/profile"
-                  className="forum-profile-action"
-                  role="menuitem"
-                  onClick={() => setIsProfileMenuOpen(false)}
-                >
-                  Profile settings
-                </Link>
-                <button type="button" className="forum-profile-action" onClick={handleSignOut} role="menuitem">
-                  Sign out
-                </button>
-              </div>
+              )}
+            </div>
+          ) : (
+            <Link to="/auth/login" className="ghost-button">
+              Sign In
+            </Link>
+          )}
+        </div>
+
+        <div className="top-navbar__mobile-menu">
+          <button className="mobile-menu__toggle" onClick={() => setIsMenuOpen(p => !p)}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 12H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M3 6H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M3 18H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          {isMenuOpen && (
+            <div className="mobile-menu__dropdown">
+              <nav className="mobile-menu__nav">
+                {links.map(({ to, label }) => (
+                  <NavLink key={to} to={to} className={({ isActive }) => `mobile-menu__link ${isActive ? 'is-active' : ''}`}>
+                    {label}
+                  </NavLink>
+                ))}
+              </nav>
             </div>
           )}
         </div>

@@ -2,6 +2,7 @@
 @import './css/misc.css';
 @import './css/landing.css';
 @import './css/forum.css';
+@import './css/auth.css';
 
 *,
 *::before,
