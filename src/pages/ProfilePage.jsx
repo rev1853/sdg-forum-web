@@ -90,6 +90,8 @@ const ProfilePage = () => {
     );
   }, [formState, originalValues, newAvatar, removeAvatar]);
 
+  const previewImage = removeAvatar ? null : previewUrl ?? originalValues.avatar;
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!user?.id) return;
@@ -176,118 +178,129 @@ const ProfilePage = () => {
       <title>Profile Settings • SDG Forum</title>
       <ForumNavbar />
 
-      <div className="profile-layout create-thread">
-        <form className="profile-form thread-form" onSubmit={handleSubmit}>
+      <div className="profile-page__container">
+        <header className="profile-page__intro">
           <span className="badge">Your account</span>
           <h1>Profile settings</h1>
           <p>Update how others see you across the SDG Forum experience.</p>
+        </header>
 
-          <div className="form-group">
-            <label htmlFor="profile-name">Full name</label>
-            <input
-              id="profile-name"
-              name="name"
-              placeholder="How should we address you?"
-              value={formState.name}
-              onChange={handleChange}
-            />
-          </div>
+        <div className="profile-page__grid">
+          <form className="profile-form" onSubmit={handleSubmit}>
+            <div className="profile-form__row">
+              <div className="form-group">
+                <label htmlFor="profile-name">Full name</label>
+                <input
+                  id="profile-name"
+                  name="name"
+                  placeholder="How should we address you?"
+                  value={formState.name}
+                  onChange={handleChange}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="profile-username">Username</label>
+                <input
+                  id="profile-username"
+                  name="username"
+                  placeholder="Pick a unique handle"
+                  value={formState.username}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
 
-          <div className="form-group">
-            <label htmlFor="profile-username">Username</label>
-            <input
-              id="profile-username"
-              name="username"
-              placeholder="Pick a unique handle"
-              value={formState.username}
-              onChange={handleChange}
-            />
-          </div>
+            <div className="form-group">
+              <label htmlFor="profile-email">Email</label>
+              <input
+                id="profile-email"
+                type="email"
+                name="email"
+                placeholder="name@example.com"
+                value={formState.email}
+                onChange={handleChange}
+                required
+              />
+            </div>
 
-          <div className="form-group">
-            <label htmlFor="profile-email">Email</label>
-            <input
-              id="profile-email"
-              type="email"
-              name="email"
-              placeholder="name@example.com"
-              value={formState.email}
-              onChange={handleChange}
-              required
-            />
-          </div>
+            <div className="profile-form__avatar form-group">
+              <label htmlFor="profile-avatar">Profile picture</label>
+              <div className="profile-avatar-inputs">
+                <input id="profile-avatar" type="file" accept="image/*" onChange={handleAvatarChange} />
+                <button type="button" className="ghost-button" onClick={handleRemoveAvatar}>
+                  Remove picture
+                </button>
+              </div>
+              <small className="form-helper">PNG or JPG up to 2MB.</small>
+            </div>
 
-          <div className="form-group">
-            <label htmlFor="profile-avatar">Profile picture</label>
-            <div className="profile-avatar-inputs">
-              <input id="profile-avatar" type="file" accept="image/*" onChange={handleAvatarChange} />
-              <button type="button" className="ghost-button" onClick={handleRemoveAvatar}>
-                Remove picture
+            {feedback.type === 'error' ? <span className="form-error">{feedback.message}</span> : null}
+            {feedback.type === 'success' ? (
+              <div className="auth-success">
+                <p>{feedback.message}</p>
+              </div>
+            ) : null}
+            {feedback.type === 'info' ? <div className="form-helper">{feedback.message}</div> : null}
+
+            <div className="profile-actions">
+              <button type="submit" className="primary-button" disabled={isSubmitting || !hasChanges}>
+                {isSubmitting ? 'Saving…' : 'Save changes'}
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => {
+                  setFormState({
+                    name: originalValues.name,
+                    email: originalValues.email,
+                    username: originalValues.username,
+                  });
+                  setNewAvatar(null);
+                  setRemoveAvatar(false);
+                  setPreviewUrl(originalValues.avatar);
+                  setFeedback({ type: null, message: '' });
+                }}
+              >
+                Reset
               </button>
             </div>
-            <small className="form-helper">PNG or JPG up to 2MB.</small>
-          </div>
+          </form>
 
-          {feedback.type === 'error' ? <span className="form-error">{feedback.message}</span> : null}
-          {feedback.type === 'success' ? (
-            <div className="auth-success">
-              <p>{feedback.message}</p>
-            </div>
-          ) : null}
-          {feedback.type === 'info' ? <div className="form-helper">{feedback.message}</div> : null}
-
-          <div className="profile-actions">
-            <button type="submit" className="primary-button" disabled={isSubmitting || !hasChanges}>
-              {isSubmitting ? 'Saving…' : 'Save changes'}
-            </button>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => {
-                setFormState({
-                  name: originalValues.name,
-                  email: originalValues.email,
-                  username: originalValues.username,
-                });
-                setNewAvatar(null);
-                setRemoveAvatar(false);
-                setPreviewUrl(originalValues.avatar);
-                setFeedback({ type: null, message: '' });
-              }}
-            >
-              Reset
-            </button>
-          </div>
-        </form>
-
-        <aside className="profile-summary thread-preview">
-          <div className="profile-card preview-card">
-            <h2>Preview</h2>
-            <div className="profile-card__avatar">
-              {previewUrl ? <img src={previewUrl} alt="Profile preview" /> : <span>{user?.name?.[0]?.toUpperCase() ?? 'U'}</span>}
-            </div>
-            <div className="profile-card__details">
-              <span className="profile-card__name">{formState.name || 'Your name here'}</span>
-              <span className="profile-card__meta">@{formState.username || 'username'}</span>
-              <span className="profile-card__meta">{formState.email || 'name@example.com'}</span>
-            </div>
-
-            <div className="profile-card__stats">
-              <div>
-                <strong>{user?._count?.threads ?? '—'}</strong>
-                <span>Threads</span>
+          <aside className="profile-preview">
+            <div className="profile-preview__card">
+              <div className="profile-preview__heading">
+                <h2>Live preview</h2>
+                <p>See how your profile appears to other members.</p>
               </div>
-              <div>
-                <strong>{user?._count?.interactions ?? '—'}</strong>
-                <span>Interactions</span>
+              <div className="profile-preview__avatar">
+                {previewImage ? (
+                  <img src={previewImage} alt="Profile preview" />
+                ) : (
+                  <span>{user?.name?.[0]?.toUpperCase() ?? 'U'}</span>
+                )}
               </div>
-              <div>
-                <strong>{user?._count?.reportsFiled ?? '—'}</strong>
-                <span>Reports filed</span>
+              <div className="profile-preview__details">
+                <span className="profile-preview__name">{formState.name || 'Your name here'}</span>
+                <span className="profile-preview__meta">@{formState.username || 'username'}</span>
+                <span className="profile-preview__meta">{formState.email || 'name@example.com'}</span>
+              </div>
+              <div className="profile-preview__stats">
+                <div className="profile-preview__stat">
+                  <strong>{user?._count?.threads ?? '—'}</strong>
+                  <span>Threads</span>
+                </div>
+                <div className="profile-preview__stat">
+                  <strong>{user?._count?.interactions ?? '—'}</strong>
+                  <span>Interactions</span>
+                </div>
+                <div className="profile-preview__stat">
+                  <strong>{user?._count?.reportsFiled ?? '—'}</strong>
+                  <span>Reports filed</span>
+                </div>
               </div>
             </div>
-          </div>
-        </aside>
+          </aside>
+        </div>
       </div>
     </section>
   );
