@@ -3,6 +3,7 @@ import ForumNavbar from '../../components/forum/ForumNavbar';
 import { useApi } from '@/api';
 import { useAuth } from '@/context/AuthContext';
 import useChatSocket from '@/hooks/useChatSocket';
+import { resolveProfileImageUrl } from '@utils/media';
 
 const MESSAGE_LIMIT = 500;
 
@@ -79,7 +80,7 @@ const normalizeRoom = (room) => {
   };
 };
 
-const normalizeMessage = (message) => {
+const normalizeMessage = (message, baseUrl) => {
   if (!message) return null;
   const raw = message?.message ?? message;
   if (!raw || typeof raw !== 'object') return null;
@@ -93,6 +94,10 @@ const normalizeMessage = (message) => {
     (typeof authorObject === 'string' && authorObject.trim().length > 0
       ? authorObject.trim()
       : authorObject?.name ?? authorObject?.username ?? authorObject?.displayName) || 'Community member';
+  const avatar =
+    typeof authorObject === 'object' && authorObject
+      ? resolveProfileImageUrl(authorObject, baseUrl)
+      : resolveProfileImageUrl(raw.profile ?? raw.user ?? null, baseUrl);
 
   const timestampValue =
     raw.created_at ?? raw.createdAt ?? raw.sent_at ?? raw.sentAt ?? raw.timestamp ?? new Date().toISOString();
@@ -116,6 +121,7 @@ const normalizeMessage = (message) => {
     content: trimmed,
     timestamp: formatTime(timestampValue),
     initials: getInitials(authorName),
+    avatar: avatar ?? null,
   };
 };
 
@@ -135,6 +141,7 @@ const ForumChatPage = () => {
   const [sendError, setSendError] = useState('');
 
   const streamRef = useRef(null);
+  const composerRef = useRef(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -199,12 +206,13 @@ const ForumChatPage = () => {
     joinGroup: joinSocketGroup,
     leaveGroup: leaveSocketGroup,
     sendMessage,
+    reconnect: reconnectSocket,
   } = useChatSocket({
     baseUrl,
     token,
     enabled: Boolean(token && supportsLiveChat),
     onMessage: (payload) => {
-      const mapped = normalizeMessage(payload);
+      const mapped = normalizeMessage(payload, baseUrl);
       if (!mapped || !mapped.groupId) return;
       setMessages((current) => {
         if (mapped.groupId !== activeRoomId) {
@@ -233,6 +241,7 @@ const ForumChatPage = () => {
             ...message,
             groupId: fallbackRoom.id,
             initials: getInitials(message.author),
+            avatar: null,
           }))
         : [];
       setMessages(fallbackMessages);
@@ -248,6 +257,7 @@ const ForumChatPage = () => {
             ...message,
             groupId: fallbackRoom.id,
             initials: getInitials(message.author),
+            avatar: null,
           }))
         : [];
       setMessages(fallbackMessages);
@@ -270,7 +280,7 @@ const ForumChatPage = () => {
           : Array.isArray(response?.data)
             ? response.data
             : [];
-        const normalized = rawMessages.map(normalizeMessage).filter(Boolean);
+        const normalized = rawMessages.map((entry) => normalizeMessage(entry, baseUrl)).filter(Boolean);
         setMessages(normalized);
       } catch (error) {
         if (!cancelled) {
@@ -322,6 +332,15 @@ const ForumChatPage = () => {
     element.scrollTop = element.scrollHeight;
   }, [messages]);
 
+  useEffect(() => {
+    const textarea = composerRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    const nextHeight = Math.min(Math.max(textarea.scrollHeight, 32), 140);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > 140 ? 'auto' : 'hidden';
+  }, [draft, activeRoomId]);
+
   const connectionLabel = useMemo(() => {
     if (!token) return 'Preview';
     if (socketStatus === 'connected') return 'Live now';
@@ -330,6 +349,16 @@ const ForumChatPage = () => {
     if (socketStatus === 'disconnected') return 'Offline';
     return 'Idle';
   }, [socketStatus, token]);
+
+  const canReconnect = useMemo(
+    () =>
+      Boolean(
+        token &&
+          supportsLiveChat &&
+          (socketStatus === 'error' || socketStatus === 'disconnected' || socketStatus === 'idle'),
+      ),
+    [socketStatus, supportsLiveChat, token],
+  );
 
   const trimmedDraft = draft.trim();
   const charactersRemaining = MESSAGE_LIMIT - trimmedDraft.length;
@@ -394,7 +423,19 @@ const ForumChatPage = () => {
                 <h2>Live rooms</h2>
                 <p>Select a space that matches your focus area.</p>
               </div>
-              <span className={`chat-status-badge chat-status-badge--${connectionState}`}>{connectionLabel}</span>
+              <div className="chat-shell__status">
+                <span className={`chat-status-badge chat-status-badge--${connectionState}`}>{connectionLabel}</span>
+                {canReconnect ? (
+                  <button
+                    type="button"
+                    className="chat-reconnect-button"
+                    onClick={reconnectSocket}
+                    disabled={socketStatus === 'connecting'}
+                  >
+                    {socketStatus === 'connecting' ? 'Reconnecting…' : 'Reconnect'}
+                  </button>
+                ) : null}
+              </div>
             </header>
             <ul>
               {isLoadingRooms
@@ -429,9 +470,21 @@ const ForumChatPage = () => {
                 <h2>{activeRoom?.name ?? 'Live chat'}</h2>
                 <p>{activeRoom?.description ?? 'Jump into the conversation with fellow builders.'}</p>
               </div>
-              <span className={`conversation-header__badge conversation-header__badge--${connectionState}`}>
-                {connectionLabel}
-              </span>
+              <div className="conversation-header__status">
+                <span className={`conversation-header__badge conversation-header__badge--${connectionState}`}>
+                  {connectionLabel}
+                </span>
+                {canReconnect ? (
+                  <button
+                    type="button"
+                    className="chat-reconnect-button"
+                    onClick={reconnectSocket}
+                    disabled={socketStatus === 'connecting'}
+                  >
+                    {socketStatus === 'connecting' ? 'Reconnecting…' : 'Reconnect'}
+                  </button>
+                ) : null}
+              </div>
             </header>
 
             {statusMessage ? <div className="conversation-status">{statusMessage}</div> : null}
@@ -463,6 +516,7 @@ const ForumChatPage = () => {
                     (user?.id && message.authorId && String(message.authorId) === String(user.id)) ||
                     (user?.name && message.author && message.author.trim() === user.name.trim());
                   const initials = message.initials || getInitials(message.author);
+                  const avatarAlt = `${message.author}'s avatar`;
 
                   return (
                     <div
@@ -470,7 +524,13 @@ const ForumChatPage = () => {
                       className={`conversation-message${isSelf ? ' conversation-message--self' : ''}`}
                       aria-live="polite"
                     >
-                      <div className="conversation-message__avatar">{initials}</div>
+                      <div className={`conversation-message__avatar${message.avatar ? ' has-image' : ''}`}>
+                        {message.avatar ? (
+                          <img src={message.avatar} alt={avatarAlt} />
+                        ) : (
+                          initials
+                        )}
+                      </div>
                       <div className="conversation-message__content">
                         <header className="conversation-message__meta">
                           <strong>{message.author}</strong>
@@ -491,9 +551,10 @@ const ForumChatPage = () => {
                 </label>
                 <textarea
                   id="chat-draft"
-                  rows={4}
+                  rows={1}
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
+                  className="conversation-composer__input"
                   placeholder={
                     !supportsLiveChat
                       ? 'Live chat is temporarily unavailable.'
@@ -503,6 +564,15 @@ const ForumChatPage = () => {
                   }
                   disabled={!supportsLiveChat || !token || isSending}
                   maxLength={MESSAGE_LIMIT + 20}
+                  ref={composerRef}
+                  style={{
+                    minHeight: '32px',
+                    maxHeight: '140px',
+                    padding: '0.35rem 0.6rem',
+                    fontSize: '0.82rem',
+                    lineHeight: '1.2',
+                    overflow: 'hidden',
+                  }}
                 />
                 <div className="conversation-composer__footer">
                   <span className={composerCounterClass}>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { gsap } from 'gsap';
 import './DisplayHeader.css';
@@ -109,6 +109,38 @@ const DisplayHeader = ({ activeItem }) => {
     .map(part => part[0]?.toUpperCase())
     .join('');
 
+  const renderAvatar = useCallback(
+    (size = 'small') => {
+      const classes = ['profile-avatar'];
+      if (size === 'large') {
+        classes.push('profile-avatar--lg');
+      }
+
+      const hasImage = typeof profileImage === 'string' && profileImage.trim().length > 0;
+
+      const content = hasImage ? (
+        <img src={profileImage} alt="Your profile" className="profile-avatar__image" />
+      ) : (
+        <span className="profile-avatar__initials">{profileInitials || 'U'}</span>
+      );
+
+      if (hasImage) {
+        classes.push('profile-avatar--with-image');
+      } else {
+        classes.push('profile-avatar--fallback');
+      }
+
+      return (
+        <span className={classes.join(' ')} aria-hidden="true">
+          {content}
+        </span>
+      );
+    },
+    [profileImage, profileInitials],
+  );
+
+  const profileHandle = user?.username ? `@${user.username}` : null;
+
   const handleSignOut = () => {
     logout();
     setIsProfileMenuOpen(false);
@@ -180,10 +212,11 @@ const DisplayHeader = ({ activeItem }) => {
                 aria-expanded={isProfileMenuOpen}
                 ref={profileTriggerRef}
               >
-                <span className="profile-avatar" aria-hidden="true">
-                  {profileImage ? <img src={profileImage} alt="Your profile" /> : profileInitials || 'U'}
+                {renderAvatar()}
+                <span className="profile-text">
+                  <span className="profile-name">{user.name}</span>
+                  {profileHandle ? <span className="profile-handle">{profileHandle}</span> : null}
                 </span>
-                <span className="profile-name">{user.name}</span>
               </button>
 
               <div
@@ -191,8 +224,10 @@ const DisplayHeader = ({ activeItem }) => {
                 ref={profileMenuRef}
                 role="menu"
               >
+                {renderAvatar('large')}
                 <div className="profile-details" role="none">
                   <span className="profile-details__name">{user.name}</span>
+                  {profileHandle ? <span className="profile-details__handle">{profileHandle}</span> : null}
                   <span className="profile-details__email">{user.email}</span>
                 </div>
                 <button type="button" className="profile-action" onClick={handleSignOut} role="menuitem">

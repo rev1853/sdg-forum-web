@@ -62,6 +62,7 @@ export const useChatSocket = ({
 } = {}) => {
   const [status, setStatus] = useState(token && enabled ? 'connecting' : 'idle');
   const [lastError, setLastError] = useState(null);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const socketRef = useRef(null);
 
   const resolvedBaseUrl = useMemo(() => resolveSocketUrl(baseUrl), [baseUrl]);
@@ -111,7 +112,7 @@ export const useChatSocket = ({
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [enabled, resolvedBaseUrl, token]);
+  }, [enabled, resolvedBaseUrl, token, reconnectAttempt]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -228,6 +229,30 @@ export const useChatSocket = ({
     [sendEventVariants],
   );
 
+  const reconnect = useCallback(() => {
+    if (!enabled || !token) {
+      setLastError(new Error('Sign in to reconnect to live chat.'));
+      return;
+    }
+
+    const socket = socketRef.current;
+    if (socket) {
+      setStatus('connecting');
+      setLastError(null);
+      try {
+        socket.connect();
+      } catch (error) {
+        setLastError(error);
+        setStatus('error');
+      }
+      return;
+    }
+
+    setLastError(null);
+    setStatus('connecting');
+    setReconnectAttempt((current) => current + 1);
+  }, [enabled, token]);
+
   return useMemo(
     () => ({
       status,
@@ -237,8 +262,9 @@ export const useChatSocket = ({
       sendMessage,
       socket: socketRef.current,
       isConnected: status === 'connected',
+      reconnect,
     }),
-    [status, lastError, joinGroup, leaveGroup, sendMessage],
+    [status, lastError, joinGroup, leaveGroup, sendMessage, reconnect],
   );
 };
 

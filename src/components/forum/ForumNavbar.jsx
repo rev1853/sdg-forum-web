@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useApi } from '@/api';
 import { resolveProfileImageUrl } from '@utils/media';
@@ -57,6 +57,36 @@ const ForumNavbar = () => {
     navigate('/');
   };
 
+  const profileHandle = useMemo(() => (user?.username ? `@${user.username}` : null), [user?.username]);
+
+  const renderAvatar = useCallback(
+    (size = 'small') => {
+      const classNames = ['profile-menu__avatar'];
+      if (size === 'large') {
+        classNames.push('profile-menu__avatar--large');
+      }
+
+      const hasImage = typeof profileImage === 'string' && profileImage.trim().length > 0;
+
+      if (hasImage) {
+        classNames.push('profile-menu__avatar--image');
+      } else {
+        classNames.push('profile-menu__avatar--fallback');
+      }
+
+      return hasImage ? (
+        <span className={classNames.join(' ')}>
+          <img src={profileImage} alt="Profile" />
+        </span>
+      ) : (
+        <span className={classNames.join(' ')} aria-hidden="true">
+          {profileInitials}
+        </span>
+      );
+    },
+    [profileImage, profileInitials],
+  );
+
   return (
     <header className="top-navbar">
       <div className="top-navbar__container">
@@ -85,14 +115,15 @@ const ForumNavbar = () => {
                 className="profile-menu__trigger"
                 onClick={() => setIsProfileMenuOpen(p => !p)}
               >
-                <img src={profileImage} alt="Profile" className="profile-menu__avatar" />
+                {renderAvatar()}
               </button>
               {isProfileMenuOpen && (
                 <div ref={profileMenuRef} className="profile-menu__dropdown">
                   <div className="profile-menu__user-info">
-                    <img src={profileImage} alt="Profile" className="profile-menu__avatar--large" />
+                    {renderAvatar('large')}
                     <div className="profile-menu__user-details">
                       <span className="profile-menu__user-name">{user.name}</span>
+                      {profileHandle ? <span className="profile-menu__user-username">{profileHandle}</span> : null}
                       <span className="profile-menu__user-email">{user.email}</span>
                     </div>
                   </div>
