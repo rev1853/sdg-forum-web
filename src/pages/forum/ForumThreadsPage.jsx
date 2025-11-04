@@ -350,50 +350,44 @@ const ForumThreadsPage = () => {
                   const author = getAuthorInfo(thread, baseUrl);
 
                   return (
-                    <article key={key} className={`thread-card${imageUrl ? '' : ' thread-card--no-media'}`}>
+                    <Link
+                      key={key}
+                      to={link}
+                      className={`thread-card thread-card--link${imageUrl ? '' : ' thread-card--no-media'}`}
+                      aria-label={`Open thread ${thread?.title ?? 'thread'}`}
+                    >
                       {imageUrl && (
-                        <Link to={link} className="thread-card__media" aria-label={`View ${thread?.title ?? 'thread'}`}>
+                        <div className="thread-card__media" aria-hidden="true">
                           <img src={imageUrl} alt="" loading="lazy" />
-                        </Link>
+                        </div>
                       )}
 
                       <div className="thread-card__content">
-                        <div className="thread-card__meta">
-                          {categoriesList.length > 0 ? (
-                            categoriesList.map((category) => (
-                              <span key={category?.id ?? category?.name} className="thread-card__goal">
-                                {formatGoalLabel(category)}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="thread-card__goal thread-card__goal--muted">Cross-goal</span>
-                          )}
-                        </div>
+                        <div className="thread-card__body">
+                          <div className="thread-card__meta">
+                            {categoriesList.length > 0 ? (
+                              categoriesList.map((category) => (
+                                <span key={category?.id ?? category?.name} className="thread-card__goal">
+                                  {formatGoalLabel(category)}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="thread-card__goal thread-card__goal--muted">Cross-goal</span>
+                            )}
+                          </div>
 
-                        <h3 className="thread-card__title">
-                          <Link to={link}>{thread?.title ?? 'Untitled thread'}</Link>
-                        </h3>
-                        <p className="thread-card__snippet">{snippet(thread?.body)}</p>
-
-                        <div className="thread-card__stats">
-                          <ThreadStat
-                            icon="👍"
-                            label="Appreciations"
-                            value={counts.likes}
-                          />
-                          <ThreadStat
-                            icon="💬"
-                            label="Replies"
-                            value={counts.replies}
-                          />
-                          <ThreadStat
-                            icon="🔁"
-                            label="Shares"
-                            value={counts.reposts}
-                          />
+                          <h3 className="thread-card__title">{thread?.title ?? 'Untitled thread'}</h3>
+                          <p className="thread-card__snippet">{snippet(thread?.body)}</p>
                         </div>
 
                         <footer className="thread-card__footer">
+                          <div className="thread-card__interactions">
+                            <div className="thread-card__stats thread-card__stats--compact">
+                              <ThreadStat icon="👍" label="Appreciations" value={counts.likes} />
+                              <ThreadStat icon="💬" label="Replies" value={counts.replies} />
+                              <ThreadStat icon="🔁" label="Shares" value={counts.reposts} />
+                            </div>
+                          </div>
                           <div className="thread-card__author">
                             {author.avatar ? (
                               <img
@@ -411,12 +405,9 @@ const ForumThreadsPage = () => {
                               <small>{formatDate(thread?.created_at ?? thread?.createdAt)}</small>
                             </div>
                           </div>
-                          <Link to={link} className="ghost-button">
-                            Open thread
-                          </Link>
                         </footer>
                       </div>
-                    </article>
+                    </Link>
                   );
                 })}
           </div>
