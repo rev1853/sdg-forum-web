@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import ForumNavbar from '../../components/forum/ForumNavbar';
 import { useApi } from '@/api';
 import { useAuth } from '@/context/AuthContext';
@@ -350,15 +351,67 @@ const ForumChatPage = () => {
     return 'Idle';
   }, [socketStatus, token]);
 
+  const isSocketOffline = socketStatus === 'error' || socketStatus === 'disconnected';
+  const showConversationOverlay = !token;
+
   const canReconnect = useMemo(
-    () =>
-      Boolean(
-        token &&
-          supportsLiveChat &&
-          (socketStatus === 'error' || socketStatus === 'disconnected' || socketStatus === 'idle'),
-      ),
-    [socketStatus, supportsLiveChat, token],
+    () => Boolean(token && supportsLiveChat && (isSocketOffline || socketStatus === 'idle')),
+    [isSocketOffline, socketStatus, supportsLiveChat, token],
   );
+
+  const renderConnectionAction = () => {
+    if (canReconnect) {
+      return (
+        <button
+          type="button"
+          className="chat-reconnect-button"
+          onClick={reconnectSocket}
+          disabled={socketStatus === 'connecting'}
+        >
+          {socketStatus === 'connecting' ? 'Reconnecting…' : 'Reconnect'}
+        </button>
+      );
+    }
+
+    if (!token) {
+      return (
+        <Link to="/auth/login" className="chat-reconnect-button">
+          Sign in
+        </Link>
+      );
+    }
+
+    return null;
+  };
+
+  const renderConversationAction = () => {
+    if (showConversationOverlay) {
+      return null;
+    }
+
+    if (!token) {
+      return (
+        <Link to="/auth/login" className="chat-reconnect-button conversation-cta">
+          Sign in to chat
+        </Link>
+      );
+    }
+
+    if (isSocketOffline) {
+      return (
+        <button
+          type="button"
+          className="chat-reconnect-button conversation-cta"
+          onClick={reconnectSocket}
+          disabled={socketStatus === 'connecting'}
+        >
+          {socketStatus === 'connecting' ? 'Reconnecting…' : 'Reconnect to chat'}
+        </button>
+      );
+    }
+
+    return null;
+  };
 
   const trimmedDraft = draft.trim();
   const charactersRemaining = MESSAGE_LIMIT - trimmedDraft.length;
@@ -425,16 +478,7 @@ const ForumChatPage = () => {
               </div>
               <div className="chat-shell__status">
                 <span className={`chat-status-badge chat-status-badge--${connectionState}`}>{connectionLabel}</span>
-                {canReconnect ? (
-                  <button
-                    type="button"
-                    className="chat-reconnect-button"
-                    onClick={reconnectSocket}
-                    disabled={socketStatus === 'connecting'}
-                  >
-                    {socketStatus === 'connecting' ? 'Reconnecting…' : 'Reconnect'}
-                  </button>
-                ) : null}
+                {renderConnectionAction()}
               </div>
             </header>
             <ul>
@@ -474,20 +518,20 @@ const ForumChatPage = () => {
                 <span className={`conversation-header__badge conversation-header__badge--${connectionState}`}>
                   {connectionLabel}
                 </span>
-                {canReconnect ? (
-                  <button
-                    type="button"
-                    className="chat-reconnect-button"
-                    onClick={reconnectSocket}
-                    disabled={socketStatus === 'connecting'}
-                  >
-                    {socketStatus === 'connecting' ? 'Reconnecting…' : 'Reconnect'}
-                  </button>
-                ) : null}
+                {renderConnectionAction()}
               </div>
             </header>
 
             {statusMessage ? <div className="conversation-status">{statusMessage}</div> : null}
+            {renderConversationAction()}
+            {showConversationOverlay ? (
+              <div className="conversation-overlay" aria-live="polite">
+                <p>Sign in to reconnect and unlock real-time chat.</p>
+                <Link to="/auth/login" className="chat-reconnect-button conversation-overlay__cta">
+                  Sign in to chat
+                </Link>
+              </div>
+            ) : null}
 
             <div className="conversation-stream" ref={streamRef}>
               {isLoadingMessages ? (

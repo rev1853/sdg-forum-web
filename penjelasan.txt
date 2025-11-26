@@ -1,0 +1,31 @@
+Panduan singkat penggunaan SDG Forum Web
+
+1) Akses awal
+- Jalankan situs secara lokal dengan `npm install` lalu `npm run dev`, kemudian buka http://localhost:5173 di browser. Jika sudah dideploy, langsung kunjungi URL produksinya.
+- Navigasi utama ada di bagian atas: Threads, Live Chat, tombol Create Thread, serta menu profil/Sign In.
+
+2) Daftar atau masuk
+- Klik Sign In untuk login dengan email/username dan kata sandi; centang Remember me jika ingin tetap masuk.
+- Pilih Continue with Google bila ingin memakai akun Google.
+- Jika belum punya akun, gunakan tautan Create an account di halaman login untuk mendaftar (isi nama depan/belakang, email, kata sandi).
+- Untuk lupa kata sandi, buka Need help?/Forgot password, masukkan email, lalu gunakan token yang dikirim untuk membuat kata sandi baru.
+
+3) Menjelajahi Threads
+- Buka menu Threads untuk melihat daftar diskusi. Gunakan kolom Search dan dropdown Goal focus untuk memfilter.
+- Klik kartu thread untuk melihat detail; tombol Start a thread membuat diskusi baru dari sini.
+- Di halaman detail, Anda bisa Appreciate (👍), Share (🔁), Copy link (🔗), atau Report (🚩). Aksi ini memerlukan akun yang masuk.
+- Scroll ke bagian Replies untuk membaca atau menambahkan balasan. Jika belum masuk, Anda akan diminta sign in terlebih dulu.
+
+4) Membuat thread baru
+- Klik Create Thread (atau Start a thread di halaman Threads).
+- Isi Title dan Body, pilih Goal focus, tambahkan Tags (opsional), dan unggah Cover image jika ada.
+- Periksa preview di sisi kanan, lalu tekan Publish thread. Setelah berhasil, Anda diarahkan ke halaman detail thread.
+
+5) Live Chat
+- Buka Live Chat dari navbar. Pilih ruang obrolan di sidebar kiri.
+- Status badge menunjukkan Live now/Connecting/Offline. Tombol Reconnect muncul jika koneksi putus.
+- Untuk mengirim pesan, Anda harus login. Tulis pesan (maks. ±500 karakter) dan tekan Send. Jika belum login atau API chat tidak tersedia, halaman menampilkan mode preview.
+
+6) Profil dan keluar
+- Klik avatar di kanan atas lalu pilih Profile untuk mengubah nama, username, email, atau foto profil; simpan dengan Save changes.
+- Dari menu yang sama pilih Sign Out untuk keluar.

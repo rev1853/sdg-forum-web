@@ -5,7 +5,8 @@ import './DisplayHeader.css';
 import { useApi } from '@/api';
 import { resolveProfileImageUrl } from '@utils/media';
 import { useAuth } from '../../../context/AuthContext';
-import sdgsLogo from '../../../assets/sdgs-logo.png';
+
+const LOGO_SRC = '/favico/logo.png';
 
 const DisplayHeader = ({ activeItem }) => {
   const navRef = useRef(null);
@@ -152,7 +153,7 @@ const DisplayHeader = ({ activeItem }) => {
     <header className="header">
       <div className="header-container">
         <Link to="/" className="logo" aria-label="SDG Forum home">
-          <img src={sdgsLogo} alt="SDGs Forum" className="logo-image" />
+          <img src={LOGO_SRC} alt="SDGs Forum" className="logo-image" />
         </Link>
 
         <div className="nav-cta-group">

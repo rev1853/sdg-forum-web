@@ -1,7 +1,8 @@
 import FadeContent from '../../../content/Animations/FadeContent/FadeContent';
-import ReactBitsLogo from '../../../assets/logos/react-bits-logo.svg';
 import './Footer.css';
 import { Link } from 'react-router-dom';
+
+const LOGO_SRC = '/favico/logo.png';
 
 const navSections = [
   {
@@ -39,7 +40,7 @@ const Footer = () => {
       <footer className="landing-footer">
         <div className="footer-wrapper">
           <div className="footer-brand">
-            <img src={ReactBitsLogo} alt="SDG Forum" className="footer-logo" />
+            <img src={LOGO_SRC} alt="SDG Forum" className="footer-logo" />
             <p className="footer-tagline">
               A collaboration hub for Sustainable Development Goal innovators, storytellers, and partners. Share your
               progress, gather feedback, and mobilise support worldwide.

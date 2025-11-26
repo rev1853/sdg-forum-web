@@ -3,7 +3,8 @@ import { Box, Text } from '@chakra-ui/react';
 import { TbBackground, TbMenu } from 'react-icons/tb';
 
 import PreviewSwitch from './PreviewSwitch';
-import logo from '../../../assets/logos/react-bits-logo.svg';
+
+const LOGO_SRC = '/favico/logo.png';
 
 const BackgroundContent = ({
   pillText = 'New Component',
@@ -51,7 +52,7 @@ const BackgroundContent = ({
                 boxShadow: '0 4px 30px rgba(0, 0, 0, 0.1)'
               }}
             >
-              <img src={logo} alt="React Bits Logo" style={{ height: '24px', borderRadius: '50px' }} />
+              <img src={LOGO_SRC} alt="SDG Forum Logo" style={{ height: '24px', borderRadius: '50px' }} />
 
               <Box display={{ base: 'flex', md: 'none' }} alignItems="center" color="white">
                 <TbMenu size={20} />

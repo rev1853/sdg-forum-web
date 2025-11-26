@@ -2233,6 +2233,7 @@
   flex-direction: column;
   min-height: 0;
   height: 100%;
+  position: relative;
 }
 
 .conversation-header {
@@ -2311,6 +2312,40 @@
   background-color: rgba(148, 163, 184, 0.12);
   color: rgba(226, 232, 240, 0.8);
   font-size: 0.9rem;
+}
+
+.conversation-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 1.25rem;
+  background: rgba(6, 0, 16, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+  z-index: 5;
+}
+
+.conversation-overlay p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 1rem;
+  max-width: 22rem;
+}
+
+.conversation-overlay__cta {
+  width: 100%;
+  max-width: 320px;
+  padding: 0.95rem 1.25rem;
+  font-size: 1rem;
+  text-align: center;
+  display: inline-flex;
+  justify-content: center;
 }
 
 .conversation-stream {
