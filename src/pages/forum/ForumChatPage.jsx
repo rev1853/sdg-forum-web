@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { FiSend, FiPlus, FiRefreshCw } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import ForumNavbar from '../../components/forum/ForumNavbar';
 import { useApi } from '@/api';
@@ -96,9 +97,8 @@ const normalizeMessage = (message, baseUrl) => {
       ? authorObject.trim()
       : authorObject?.name ?? authorObject?.username ?? authorObject?.displayName) || 'Community member';
   const avatar =
-    typeof authorObject === 'object' && authorObject
-      ? resolveProfileImageUrl(authorObject, baseUrl)
-      : resolveProfileImageUrl(raw.profile ?? raw.user ?? null, baseUrl);
+    (typeof authorObject === 'object' && authorObject ? resolveProfileImageUrl(authorObject, baseUrl) : null) ??
+    resolveProfileImageUrl(raw, baseUrl);
 
   const timestampValue =
     raw.created_at ?? raw.createdAt ?? raw.sent_at ?? raw.sentAt ?? raw.timestamp ?? new Date().toISOString();
@@ -136,6 +136,7 @@ const ForumChatPage = () => {
   const [messages, setMessages] = useState([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [joinedRoomId, setJoinedRoomId] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [draft, setDraft] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -208,6 +209,8 @@ const ForumChatPage = () => {
     leaveGroup: leaveSocketGroup,
     sendMessage,
     reconnect: reconnectSocket,
+    isConnected,
+    error: socketError,
   } = useChatSocket({
     baseUrl,
     token,
@@ -239,11 +242,11 @@ const ForumChatPage = () => {
       const fallbackRoom = FALLBACK_ROOMS.find((room) => room.id === activeRoomId);
       const fallbackMessages = fallbackRoom
         ? fallbackRoom.messages.map((message) => ({
-            ...message,
-            groupId: fallbackRoom.id,
-            initials: getInitials(message.author),
-            avatar: null,
-          }))
+          ...message,
+          groupId: fallbackRoom.id,
+          initials: getInitials(message.author),
+          avatar: null,
+        }))
         : [];
       setMessages(fallbackMessages);
       setStatusMessage('Live chat API is unavailable. Showing a preview instead.');
@@ -255,11 +258,11 @@ const ForumChatPage = () => {
       const fallbackRoom = FALLBACK_ROOMS.find((room) => room.id === activeRoomId);
       const fallbackMessages = fallbackRoom
         ? fallbackRoom.messages.map((message) => ({
-            ...message,
-            groupId: fallbackRoom.id,
-            initials: getInitials(message.author),
-            avatar: null,
-          }))
+          ...message,
+          groupId: fallbackRoom.id,
+          initials: getInitials(message.author),
+          avatar: null,
+        }))
         : [];
       setMessages(fallbackMessages);
       setStatusMessage('Sign in to join the live conversation. Showing a preview instead.');
@@ -271,8 +274,17 @@ const ForumChatPage = () => {
     const loadMessages = async () => {
       setIsLoadingMessages(true);
       setStatusMessage('');
+      setJoinedRoomId(null); // Reset join status
       try {
-        await chat.joinGroup(activeRoomId).catch(() => undefined);
+        // Attempt to join via REST API first
+        try {
+          await chat.joinGroup(activeRoomId);
+        } catch (err) {
+          // Ignore "already member" errors, but log others
+          console.warn('REST joinGroup warning:', err);
+        }
+        setJoinedRoomId(activeRoomId); // Mark as ready for socket connection
+
         const response = await chat.listMessages(activeRoomId, { limit: 50 });
         if (cancelled) return;
 
@@ -304,16 +316,20 @@ const ForumChatPage = () => {
 
   useEffect(() => {
     if (!supportsLiveChat || !activeRoomId || !token) return undefined;
+    if (!isConnected || joinedRoomId !== activeRoomId) return undefined; // Wait for REST join for THIS room
 
     let isMounted = true;
 
     const ensureSocketSubscription = async () => {
       try {
         await joinSocketGroup(activeRoomId);
+        if (isMounted) {
+          setStatusMessage(''); // Clear any previous error messages on success
+        }
       } catch (error) {
         if (isMounted) {
           console.error('Failed to subscribe to chat room', error);
-          setStatusMessage('Live updates are offline. New messages may be delayed.');
+          setStatusMessage(`Live updates are offline: ${error.message || 'Connection failed'}`);
         }
       }
     };
@@ -323,9 +339,17 @@ const ForumChatPage = () => {
     return () => {
       isMounted = false;
       leaveSocketGroup(activeRoomId).catch(() => undefined);
-      chat.leaveGroup(activeRoomId).catch(() => undefined);
+      // We do NOT call chat.leaveGroup here to avoid thrashing REST membership when switching views
     };
-  }, [activeRoomId, chat, joinSocketGroup, leaveSocketGroup, supportsLiveChat, token]);
+  }, [activeRoomId, chat, joinSocketGroup, leaveSocketGroup, supportsLiveChat, token, isConnected, joinedRoomId]);
+
+  // Expose socket error to UI
+  useEffect(() => {
+    if (socketError) {
+      console.error('Socket connection error:', socketError);
+      setStatusMessage(`Connection issue: ${socketError.message || 'Unknown error'}`);
+    }
+  }, [socketError]);
 
   useEffect(() => {
     const element = streamRef.current;
@@ -364,7 +388,7 @@ const ForumChatPage = () => {
       return (
         <button
           type="button"
-          className="chat-reconnect-button"
+          className="text-xs text-[var(--color-accent-secondary)] hover:text-white underline"
           onClick={reconnectSocket}
           disabled={socketStatus === 'connecting'}
         >
@@ -375,7 +399,7 @@ const ForumChatPage = () => {
 
     if (!token) {
       return (
-        <Link to="/auth/login" className="chat-reconnect-button">
+        <Link to="/auth/login" className="text-xs text-[var(--color-accent-secondary)] hover:text-white underline">
           Sign in
         </Link>
       );
@@ -391,7 +415,7 @@ const ForumChatPage = () => {
 
     if (!token) {
       return (
-        <Link to="/auth/login" className="chat-reconnect-button conversation-cta">
+        <Link to="/auth/login" className="primary-button my-4">
           Sign in to chat
         </Link>
       );
@@ -401,7 +425,7 @@ const ForumChatPage = () => {
       return (
         <button
           type="button"
-          className="chat-reconnect-button conversation-cta"
+          className="primary-button my-4"
           onClick={reconnectSocket}
           disabled={socketStatus === 'connecting'}
         >
@@ -417,8 +441,8 @@ const ForumChatPage = () => {
   const charactersRemaining = MESSAGE_LIMIT - trimmedDraft.length;
   const composerCounterClass = [
     'conversation-composer__counter',
-    charactersRemaining < 0 ? 'is-error' : '',
-    charactersRemaining <= 50 && charactersRemaining >= 0 ? 'is-warning' : '',
+    charactersRemaining < 0 ? 'text-red-400' : '',
+    charactersRemaining <= 50 && charactersRemaining >= 0 ? 'text-yellow-400' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -468,7 +492,7 @@ const ForumChatPage = () => {
   return (
     <>
       <ForumNavbar />
-      <main className="chat-page" role="main">
+      <main className="chat-page bg-[var(--color-bg-primary)]" role="main">
         <div className="chat-shell">
           <aside className="chat-shell__rooms">
             <header className="chat-shell__rooms-header">
@@ -476,18 +500,19 @@ const ForumChatPage = () => {
                 <h2>Live rooms</h2>
                 <p>Select a space that matches your focus area.</p>
               </div>
-              <div className="chat-shell__status">
-                <span className={`chat-status-badge chat-status-badge--${connectionState}`}>{connectionLabel}</span>
+              <div className="flex items-center gap-2 mt-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full ${connectionState === 'live-now' ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>{connectionLabel}</span>
                 {renderConnectionAction()}
               </div>
             </header>
             <ul>
               {isLoadingRooms
                 ? [...Array(3)].map((_, index) => (
-                    <li key={`room-skeleton-${index}`} className="chat-room chat-room--skeleton" aria-hidden="true">
-                      Loading room…
-                    </li>
-                  ))
+                  <li key={`room-skeleton-${index}`} className="p-4 animate-pulse" aria-hidden="true">
+                    <div className="h-4 bg-gray-700/50 rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-gray-700/30 rounded w-1/2"></div>
+                  </li>
+                ))
                 : rooms.length === 0
                   ? (
                     <li className="chat-room chat-room--empty">No rooms available right now.</li>
@@ -514,39 +539,31 @@ const ForumChatPage = () => {
                 <h2>{activeRoom?.name ?? 'Live chat'}</h2>
                 <p>{activeRoom?.description ?? 'Jump into the conversation with fellow builders.'}</p>
               </div>
-              <div className="conversation-header__status">
-                <span className={`conversation-header__badge conversation-header__badge--${connectionState}`}>
+              <div className="conversation-header__status flex items-center gap-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full ${connectionState === 'live-now' ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>
                   {connectionLabel}
                 </span>
                 {renderConnectionAction()}
               </div>
             </header>
 
-            {statusMessage ? <div className="conversation-status">{statusMessage}</div> : null}
+            {statusMessage ? <div className="p-2 text-center text-sm text-yellow-200 bg-yellow-900/20">{statusMessage}</div> : null}
             {renderConversationAction()}
-            {showConversationOverlay ? (
-              <div className="conversation-overlay" aria-live="polite">
-                <p>Sign in to reconnect and unlock real-time chat.</p>
-                <Link to="/auth/login" className="chat-reconnect-button conversation-overlay__cta">
-                  Sign in to chat
-                </Link>
-              </div>
-            ) : null}
+            {/* Removed blocking overlay to allow previewing messages */}
 
             <div className="conversation-stream" ref={streamRef}>
               {isLoadingMessages ? (
-                <div className="conversation-message conversation-message--skeleton" aria-hidden="true">
-                  <div className="conversation-message__avatar">…</div>
-                  <div className="conversation-message__content">
+                <div className="conversation-message animate-pulse" aria-hidden="true">
+                  <div className="conversation-message__avatar bg-gray-700"></div>
+                  <div className="conversation-message__content w-full">
                     <header className="conversation-message__meta">
-                      <strong>Connecting</strong>
-                      <time>Now</time>
+                      <div className="h-3 bg-gray-700/50 rounded w-20"></div>
                     </header>
-                    <p>Preparing the latest messages…</p>
+                    <div className="h-4 bg-gray-700/50 rounded w-3/4"></div>
                   </div>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="conversation-empty">
+                <div className="forum-empty">
                   <h3>No messages yet</h3>
                   <p>
                     {token
@@ -575,12 +592,14 @@ const ForumChatPage = () => {
                           initials
                         )}
                       </div>
-                      <div className="conversation-message__content">
+                      <div className="conversation-message__body">
                         <header className="conversation-message__meta">
                           <strong>{message.author}</strong>
-                          <time>{message.timestamp}</time>
+                          <time title={message.timestamp}>{message.timestamp}</time>
                         </header>
-                        <p>{message.content}</p>
+                        <div className="conversation-message__bubble">
+                          <p>{message.content}</p>
+                        </div>
                       </div>
                     </div>
                   );
@@ -588,7 +607,7 @@ const ForumChatPage = () => {
               )}
             </div>
 
-            <footer className={`conversation-composer${(!token || !supportsLiveChat) ? ' conversation-composer--disabled' : ''}`}>
+            <footer className={`conversation-composer${!supportsLiveChat ? ' opacity-50 pointer-events-none' : ''}`}>
               <form onSubmit={handleSend}>
                 <label htmlFor="chat-draft" className="sr-only">
                   Message
@@ -612,9 +631,9 @@ const ForumChatPage = () => {
                   style={{
                     minHeight: '32px',
                     maxHeight: '140px',
-                    padding: '0.35rem 0.6rem',
-                    fontSize: '0.82rem',
-                    lineHeight: '1.2',
+                    padding: '0.8rem 1rem',
+                    fontSize: '0.95rem',
+                    lineHeight: '1.4',
                     overflow: 'hidden',
                   }}
                 />
@@ -626,10 +645,10 @@ const ForumChatPage = () => {
                         : `${Math.abs(charactersRemaining)} over the limit`
                       : `${MESSAGE_LIMIT} characters max`}
                   </span>
-                  <div className="conversation-composer__actions">
-                    {sendError && <span className="conversation-composer__error">{sendError}</span>}
-                    <button type="submit" className="primary-button" disabled={!supportsLiveChat || !token || isSending}>
-                      {isSending ? 'Sending…' : 'Send'}
+                  <div className="conversation-composer__actions flex items-center gap-4">
+                    {sendError && <span className="text-red-400 text-sm">{sendError}</span>}
+                    <button type="submit" className="primary-button !py-2 !px-6 gap-2" disabled={!supportsLiveChat || !token || isSending}>
+                      {isSending ? 'Sending…' : <><FiSend size={16} /> Send</>}
                     </button>
                   </div>
                 </div>

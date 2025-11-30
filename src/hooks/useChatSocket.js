@@ -33,6 +33,9 @@ const createSocket = ({ baseUrl, token }) => {
   return io(baseUrl, {
     auth,
     autoConnect: false,
+    transports: ['polling', 'websocket'],
+    withCredentials: false,
+    extraHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
 };
 

@@ -24,7 +24,7 @@ const SdgGoalsGallery = () => {
         const track = trackRef.current;
         const viewport = viewportRef.current;
         const header = document.querySelector('.header');
-        if (!section || !track || !viewport) return () => {};
+        if (!section || !track || !viewport) return () => { };
 
         const getScrollAmount = () => Math.max(0, track.scrollWidth - viewport.offsetWidth);
         const hideHeader = () => {
@@ -113,15 +113,15 @@ const SdgGoalsGallery = () => {
 };
 
 export default SdgGoalsGallery;
-      <div className="sdg-gallery-overlay sdg-gallery-overlay--top">
-        <SplitText
-          text="Every Goal, One Shared Mission"
-          tag="h2"
-          className="sdg-gallery-heading"
-          textAlign="center"
-          splitType="words"
-          delay={45}
-          duration={0.55}
-        />
-        <span className="sdg-gallery-badge">17 Global Goals</span>
-      </div>
+<div className="sdg-gallery-overlay sdg-gallery-overlay--top">
+  <SplitText
+    text="Every Goal, One Shared Mission"
+    tag="h2"
+    className="sdg-gallery-heading"
+    textAlign="center"
+    splitType="words"
+    delay={45}
+    duration={0.55}
+  />
+  <span className="sdg-gallery-badge">17 Global Goals</span>
+</div>

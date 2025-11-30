@@ -4,19 +4,20 @@ import { resolveProfileImageUrl } from '@utils/media';
 import ForumNavbar from '../components/forum/ForumNavbar';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { FiUser, FiMail, FiAtSign, FiCamera, FiTrash2, FiRefreshCw, FiSave, FiShield } from 'react-icons/fi';
 
 const ProfilePage = () => {
   const { users, baseUrl } = useApi();
   const { user, token, refreshUser } = useAuth();
 
-  const [formState, setFormState] = useState({
-    name: '',
-    email: '',
-    username: '',
-  });
+  const [formState, setFormState] = useState(() => ({
+    name: user?.name ?? '',
+    email: user?.email ?? '',
+    username: user?.username ?? '',
+  }));
   const [newAvatar, setNewAvatar] = useState(null);
   const [removeAvatar, setRemoveAvatar] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(() => resolveProfileImageUrl(user, baseUrl));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState({ type: null, message: '' });
 
@@ -32,15 +33,24 @@ const ProfilePage = () => {
 
   useEffect(() => {
     if (!user) return;
-    setFormState({
-      name: user.name ?? '',
-      email: user.email ?? '',
-      username: user.username ?? '',
+    setFormState(current => {
+      // Only update if values are missing or if user object has changed significantly
+      // This prevents overwriting user input if they are typing while a background refresh happens
+      if (current.name === '' && current.email === '' && current.username === '') {
+        return {
+          name: user.name ?? '',
+          email: user.email ?? '',
+          username: user.username ?? '',
+        };
+      }
+      return current;
     });
-    setPreviewUrl(resolveProfileImageUrl(user, baseUrl));
-    setRemoveAvatar(false);
-    setNewAvatar(null);
-  }, [user, baseUrl]);
+
+    // Update preview if it hasn't been modified by user
+    if (!newAvatar && !removeAvatar) {
+      setPreviewUrl(resolveProfileImageUrl(user, baseUrl));
+    }
+  }, [user, baseUrl, newAvatar, removeAvatar]);
 
   useEffect(() => {
     return () => {
@@ -138,6 +148,12 @@ const ProfilePage = () => {
 
       if (updated) {
         setFeedback({ type: 'success', message: 'Profile updated successfully.' });
+        // Update form state with new values to reset "hasChanges"
+        setFormState({
+          name: updated.name ?? '',
+          email: updated.email ?? '',
+          username: updated.username ?? '',
+        });
         setPreviewUrl(resolveProfileImageUrl(updated, baseUrl));
         setNewAvatar(null);
         setRemoveAvatar(false);
@@ -163,11 +179,14 @@ const ProfilePage = () => {
         <title>Profile Settings • SDG Forum</title>
         <ForumNavbar />
         <div className="profile-locked">
-          <h1>Profile settings</h1>
-          <p>You need to be signed in to manage your profile.</p>
-          <Link to="/auth/login" className="primary-button">
-            Sign in to continue
-          </Link>
+          <div className="profile-locked__content">
+            <FiShield size={48} className="profile-locked__icon" />
+            <h1>Profile settings</h1>
+            <p>You need to be signed in to manage your profile.</p>
+            <Link to="/auth/login" className="primary-button">
+              Sign in to continue
+            </Link>
+          </div>
         </div>
       </section>
     );
@@ -187,9 +206,42 @@ const ProfilePage = () => {
 
         <div className="profile-page__grid">
           <form className="profile-form" onSubmit={handleSubmit}>
-            <div className="profile-form__row">
-              <div className="form-group">
-                <label htmlFor="profile-name">Full name</label>
+            <div className="profile-form__section">
+              <div className="profile-form__avatar-upload">
+                <div className="avatar-preview">
+                  {previewImage ? (
+                    <img src={previewImage} alt="Profile preview" />
+                  ) : (
+                    <span className="avatar-fallback">{user?.name?.[0]?.toUpperCase() ?? 'U'}</span>
+                  )}
+                  <div className="avatar-overlay">
+                    <FiCamera size={24} />
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                    className="avatar-input"
+                    aria-label="Upload profile picture"
+                  />
+                </div>
+                <div className="avatar-actions">
+                  <h3>Profile Picture</h3>
+                  <p>PNG or JPG up to 2MB</p>
+                  {previewImage && (
+                    <button type="button" className="text-button text-danger" onClick={handleRemoveAvatar}>
+                      <FiTrash2 /> Remove picture
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="profile-form__fields">
+              <div className="form-field">
+                <label htmlFor="profile-name">
+                  <FiUser className="form-icon" /> Full name
+                </label>
                 <input
                   id="profile-name"
                   name="name"
@@ -198,8 +250,11 @@ const ProfilePage = () => {
                   onChange={handleChange}
                 />
               </div>
-              <div className="form-group">
-                <label htmlFor="profile-username">Username</label>
+
+              <div className="form-field">
+                <label htmlFor="profile-username">
+                  <FiAtSign className="form-icon" /> Username
+                </label>
                 <input
                   id="profile-username"
                   name="username"
@@ -208,43 +263,36 @@ const ProfilePage = () => {
                   onChange={handleChange}
                 />
               </div>
-            </div>
 
-            <div className="form-group">
-              <label htmlFor="profile-email">Email</label>
-              <input
-                id="profile-email"
-                type="email"
-                name="email"
-                placeholder="name@example.com"
-                value={formState.email}
-                onChange={handleChange}
-                required
-              />
-            </div>
-
-            <div className="profile-form__avatar form-group">
-              <label htmlFor="profile-avatar">Profile picture</label>
-              <div className="profile-avatar-inputs">
-                <input id="profile-avatar" type="file" accept="image/*" onChange={handleAvatarChange} />
-                <button type="button" className="ghost-button" onClick={handleRemoveAvatar}>
-                  Remove picture
-                </button>
+              <div className="form-field">
+                <label htmlFor="profile-email">
+                  <FiMail className="form-icon" /> Email
+                </label>
+                <input
+                  id="profile-email"
+                  type="email"
+                  name="email"
+                  placeholder="name@example.com"
+                  value={formState.email}
+                  onChange={handleChange}
+                  required
+                />
               </div>
-              <small className="form-helper">PNG or JPG up to 2MB.</small>
             </div>
 
-            {feedback.type === 'error' ? <span className="form-error">{feedback.message}</span> : null}
-            {feedback.type === 'success' ? (
-              <div className="auth-success">
-                <p>{feedback.message}</p>
+            {feedback.message && (
+              <div className={`form-feedback form-feedback--${feedback.type}`}>
+                {feedback.message}
               </div>
-            ) : null}
-            {feedback.type === 'info' ? <div className="form-helper">{feedback.message}</div> : null}
+            )}
 
-            <div className="profile-actions">
+            <div className="form-actions">
               <button type="submit" className="primary-button" disabled={isSubmitting || !hasChanges}>
-                {isSubmitting ? 'Saving…' : 'Save changes'}
+                {isSubmitting ? (
+                  <>Saving...</>
+                ) : (
+                  <><FiSave /> Save changes</>
+                )}
               </button>
               <button
                 type="button"
@@ -260,42 +308,40 @@ const ProfilePage = () => {
                   setPreviewUrl(originalValues.avatar);
                   setFeedback({ type: null, message: '' });
                 }}
+                disabled={!hasChanges}
               >
-                Reset
+                <FiRefreshCw /> Reset
               </button>
             </div>
           </form>
 
           <aside className="profile-preview">
             <div className="profile-preview__card">
-              <div className="profile-preview__heading">
-                <h2>Live preview</h2>
-                <p>See how your profile appears to other members.</p>
+              <div className="profile-preview__header">
+                <span className="preview-label">Live Preview</span>
               </div>
-              <div className="profile-preview__avatar">
-                {previewImage ? (
-                  <img src={previewImage} alt="Profile preview" />
-                ) : (
-                  <span>{user?.name?.[0]?.toUpperCase() ?? 'U'}</span>
-                )}
-              </div>
-              <div className="profile-preview__details">
-                <span className="profile-preview__name">{formState.name || 'Your name here'}</span>
-                <span className="profile-preview__meta">@{formState.username || 'username'}</span>
-                <span className="profile-preview__meta">{formState.email || 'name@example.com'}</span>
-              </div>
-              <div className="profile-preview__stats">
-                <div className="profile-preview__stat">
-                  <strong>{user?._count?.threads ?? '—'}</strong>
-                  <span>Threads</span>
+              <div className="profile-preview__content">
+                <div className="profile-preview__avatar">
+                  {previewImage ? (
+                    <img src={previewImage} alt="Profile preview" />
+                  ) : (
+                    <span>{user?.name?.[0]?.toUpperCase() ?? 'U'}</span>
+                  )}
                 </div>
-                <div className="profile-preview__stat">
-                  <strong>{user?._count?.interactions ?? '—'}</strong>
-                  <span>Interactions</span>
+                <div className="profile-preview__info">
+                  <h3 className="profile-preview__name">{formState.name || 'Your name here'}</h3>
+                  <p className="profile-preview__handle">@{formState.username || 'username'}</p>
                 </div>
-                <div className="profile-preview__stat">
-                  <strong>{user?._count?.reportsFiled ?? '—'}</strong>
-                  <span>Reports filed</span>
+
+                <div className="profile-preview__stats">
+                  <div className="stat-item">
+                    <span className="stat-value">{user?._count?.threads ?? '0'}</span>
+                    <span className="stat-label">Threads</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-value">{user?._count?.interactions ?? '0'}</span>
+                    <span className="stat-label">Interactions</span>
+                  </div>
                 </div>
               </div>
             </div>

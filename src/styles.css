@@ -30,6 +30,16 @@
   background-color: #242424;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Color Palette */
+  --color-bg-primary: #060C23;
+  --color-bg-secondary: #0E183A;
+  --color-accent-primary: #D67C06;
+  --color-accent-primary-rgb: 214, 124, 6;
+  --color-accent-secondary: #8400ff;
+  /* Keeping purple for chat/forum accent */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: rgba(255, 255, 255, 0.7);
 }
 
 html {

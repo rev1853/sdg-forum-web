@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FiType, FiAlignLeft, FiImage, FiTag, FiLayers, FiCheck, FiChevronDown, FiX } from 'react-icons/fi';
 import ForumNavbar from '../../components/forum/ForumNavbar';
 import { useApi } from '../../api';
 import { useAuth } from '@/context/AuthContext';
@@ -10,7 +11,9 @@ const CreateThreadPage = () => {
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [category, setCategory] = useState('');
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
   const [tags, setTags] = useState('');
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -18,6 +21,16 @@ const CreateThreadPage = () => {
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +75,21 @@ const CreateThreadPage = () => {
     setImage(event.target.files?.[0] ?? null);
   };
 
+  const handleCategoryToggle = (id) => {
+    if (selectedCategories.includes(id)) {
+      setSelectedCategories((prev) => prev.filter((c) => c !== id));
+    } else {
+      if (selectedCategories.length < 3) {
+        setSelectedCategories((prev) => [...prev, id]);
+      }
+    }
+  };
+
+  const removeCategory = (e, id) => {
+    e.stopPropagation();
+    setSelectedCategories((prev) => prev.filter((c) => c !== id));
+  };
+
   const tagValues = useMemo(
     () =>
       tags
@@ -71,10 +99,9 @@ const CreateThreadPage = () => {
     [tags],
   );
 
-  const selectedCategory = useMemo(() => {
-    if (!category) return null;
-    return categories.find((entry) => String(entry?.id ?? entry?.value) === String(category)) ?? null;
-  }, [categories, category]);
+  const selectedCategoryObjects = useMemo(() => {
+    return categories.filter((cat) => selectedCategories.includes(cat.id || cat.value));
+  }, [categories, selectedCategories]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -85,8 +112,11 @@ const CreateThreadPage = () => {
       return;
     }
 
-    if (!category) {
-      setError('Pick a category before submitting.');
+    // Filter out any undefined/null values just in case
+    const validCategoryIds = selectedCategories.filter(Boolean);
+
+    if (validCategoryIds.length === 0) {
+      setError('Pick at least one category before submitting.');
       return;
     }
 
@@ -104,12 +134,16 @@ const CreateThreadPage = () => {
       const payload = {
         title: trimmedTitle,
         body: trimmedBody,
-        categoryIds: [category],
+        categoryIds: validCategoryIds,
         tags: tagValues.length > 0 ? tagValues : undefined,
         image: image ?? undefined,
       };
 
+      console.log('Submitting thread payload:', payload);
+
       const response = await threads.createThread(payload);
+      console.log('Thread created response:', response);
+
       const createdThread = response?.thread ?? response ?? null;
       const identifier = createdThread?.id ?? createdThread?.slug ?? null;
 
@@ -128,7 +162,9 @@ const CreateThreadPage = () => {
         'Failed to create thread. Try again shortly.';
       setError(message);
     } finally {
-      setIsSubmitting(false);
+      if (window.location.pathname.includes('/create')) {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -157,7 +193,9 @@ const CreateThreadPage = () => {
             {loadError && <div className="form-feedback form-feedback--warning">{loadError}</div>}
 
             <div className="form-field">
-              <label htmlFor="title">Thread title</label>
+              <label htmlFor="title">
+                <FiType className="form-icon" /> Thread title
+              </label>
               <p className="form-field__hint">Summarize the essence of your update in one punchy sentence.</p>
               <input
                 id="title"
@@ -170,7 +208,9 @@ const CreateThreadPage = () => {
             </div>
 
             <div className="form-field">
-              <label htmlFor="body">What happened?</label>
+              <label htmlFor="body">
+                <FiAlignLeft className="form-icon" /> What happened?
+              </label>
               <p className="form-field__hint">
                 Include what you tried, what surprised you, and how others can support next steps. Markdown and line breaks are supported.
               </p>
@@ -185,28 +225,68 @@ const CreateThreadPage = () => {
             </div>
 
             <div className="form-grid">
-              <div className="form-field">
-                <label htmlFor="category">Goal focus</label>
-                <p className="form-field__hint">Pick the primary SDG focus for this update.</p>
-                <select id="category" value={category} onChange={(e) => setCategory(e.target.value)} required>
-                  <option value="" disabled>Select a category</option>
-                  {Array.isArray(categories) &&
-                    categories
-                      .map((cat) => {
-                        const id = cat?.id ?? cat?.value ?? null;
-                        const name = cat?.name ?? cat?.label ?? 'Untitled category';
-                        return id ? (
-                          <option key={id} value={id}>
-                            {name}
-                          </option>
-                        ) : null;
-                      })
-                      .filter(Boolean)}
-                </select>
+              <div className="form-field" ref={dropdownRef}>
+                <label>
+                  <FiLayers className="form-icon" /> Goal focus
+                </label>
+                <p className="form-field__hint">Pick up to 3 primary SDG focuses.</p>
+
+                <div
+                  className={`custom-select ${isDropdownOpen ? 'is-open' : ''}`}
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                >
+                  <div className="custom-select__trigger">
+                    {selectedCategories.length > 0 ? (
+                      <div className="selected-tags">
+                        {selectedCategoryObjects.map(cat => (
+                          <span key={cat.id || cat.value} className="select-tag">
+                            {cat.name || cat.label}
+                            <button
+                              type="button"
+                              onClick={(e) => removeCategory(e, cat.id || cat.value)}
+                              className="select-tag__remove"
+                            >
+                              <FiX size={12} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="placeholder">Select categories...</span>
+                    )}
+                    <FiChevronDown className="chevron" />
+                  </div>
+
+                  {isDropdownOpen && (
+                    <div className="custom-select__options">
+                      {categories.map((cat) => {
+                        const id = cat.id || cat.value;
+                        const isSelected = selectedCategories.includes(id);
+                        const isDisabled = !isSelected && selectedCategories.length >= 3;
+
+                        return (
+                          <div
+                            key={id}
+                            className={`select-option ${isSelected ? 'is-selected' : ''} ${isDisabled ? 'is-disabled' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!isDisabled) handleCategoryToggle(id);
+                            }}
+                          >
+                            <span>{cat.name || cat.label}</span>
+                            {isSelected && <FiCheck className="check-icon" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="form-field">
-                <label htmlFor="tags">Tags</label>
+                <label htmlFor="tags">
+                  <FiTag className="form-icon" /> Tags
+                </label>
                 <p className="form-field__hint">Use up to five labels so others can find your update.</p>
                 <input
                   id="tags"
@@ -219,14 +299,24 @@ const CreateThreadPage = () => {
             </div>
 
             <div className="form-field">
-              <label htmlFor="image">Cover image</label>
+              <label>
+                <FiImage className="form-icon" /> Cover image
+              </label>
               <p className="form-field__hint">Optional: upload a hero image or infographic (max 5&nbsp;MB).</p>
-              <input id="image" type="file" accept="image/*" onChange={handleImageChange} />
-              {image && (
-                <p className="form-field__meta">
-                  Selected file: <strong>{image.name}</strong>
-                </p>
-              )}
+
+              <div className="file-upload-wrapper">
+                <input
+                  id="image"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="file-upload-input"
+                />
+                <div className="file-upload-control">
+                  <FiImage size={24} />
+                  <span>{image ? image.name : 'Click to upload or drag and drop'}</span>
+                </div>
+              </div>
             </div>
 
             <div className="form-actions">
@@ -242,7 +332,7 @@ const CreateThreadPage = () => {
           <aside className="create-thread__sidebar">
             <div className="preview-card">
               <header className="preview-card__header">
-                <span className="preview-card__badge">{selectedCategory?.name ?? 'Goal TBD'}</span>
+                <span className="preview-card__badge">{selectedCategoryObjects[0]?.name ?? 'Goal TBD'}</span>
                 <h3>{previewTitle}</h3>
                 <p>{previewBody}</p>
               </header>

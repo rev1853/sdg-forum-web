@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { FiArrowLeft, FiHeart, FiMessageSquare, FiRepeat, FiShare2, FiFlag } from 'react-icons/fi';
 import ForumNavbar from '../../components/forum/ForumNavbar';
 import { useApi } from '../../api';
 import { useAuth } from '@/context/AuthContext';
 import { resolveProfileImageUrl, resolveThreadImage } from '@utils/media';
+import { useLikedThreads } from '@/hooks/useLikedThreads';
 
 const formatDateTime = (value) => {
   if (!value) return '';
@@ -28,7 +30,7 @@ const getInitials = (name) => {
 
 const createAvatarDataUrl = (name) => {
   const initials = getInitials(name);
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'>\n  <defs>\n    <linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'>\n      <stop offset='0%' stop-color='#4C1D95'/>\n      <stop offset='100%' stop-color='#1E40AF'/>\n    </linearGradient>\n  </defs>\n  <rect width='72' height='72' rx='36' fill='url(#bg)'/>\n  <text x='50%' y='50%' dominant-baseline='central' text-anchor='middle' font-family='Inter, Arial, sans-serif' font-size='28' font-weight='700' fill='#F8FAFC'>${initials}</text>\n</svg>`;
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'>\n  <defs>\n    <linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'>\n      <stop offset='0%' stop-color='#4C1D95' />\n      <stop offset='100%' stop-color='#1E40AF' />\n    </linearGradient>\n  </defs>\n  <rect width='72' height='72' rx='36' fill='url(#bg)' />\n  <text x='50%' y='50%' dominant-baseline='central' text-anchor='middle' font-family='Inter, Arial, sans-serif' font-size='28' font-weight='700' fill='#F8FAFC'>${initials}</text>\n</svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
@@ -138,9 +140,17 @@ const ThreadDetailPage = () => {
   const [isSharing, setIsSharing] = useState(false);
   const [interactionFeedback, setInteractionFeedback] = useState({ type: null, message: '' });
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-  const [reportReason, setReportReason] = useState('');
+  const [reportReason, setReportReason] = useState('spam');
   const [reportNotes, setReportNotes] = useState('');
   const reportDialogRef = useRef(null);
+  const replyTextareaRef = useRef(null);
+
+  useEffect(() => {
+    const textarea = replyTextareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [replyBody]);
 
   const REPORT_REASONS = useMemo(
     () => [
@@ -218,6 +228,8 @@ const ThreadDetailPage = () => {
     loadReplies();
   }, [loadReplies]);
 
+  const { isLiked, toggleLike } = useLikedThreads();
+
   useEffect(() => {
     if (!thread) {
       setHasLiked(false);
@@ -230,113 +242,19 @@ const ThreadDetailPage = () => {
     const reposted =
       resolveViewerFlag(viewerSource, REPOST_FLAG_KEYS) || resolveViewerFlag(thread, REPOST_FLAG_KEYS);
 
-    setHasLiked(liked);
+    setHasLiked(liked || isLiked(thread.id));
     setHasReposted(reposted);
-  }, [thread]);
+  }, [thread, isLiked]);
 
+  // Sync local state with hook when it changes
   useEffect(() => {
-    const likeCount = thread?.counts?.likes ?? 0;
-    const replyCount =
-      thread?.counts?.replies ??
-      (Array.isArray(thread?.replies) ? thread.replies.length : replies.length);
-    const repostCount = thread?.counts?.reposts ?? 0;
-
-    setCounts((current) => {
-      if (
-        current.likes === likeCount &&
-        current.replies === replyCount &&
-        current.reposts === repostCount
-      ) {
-        return current;
+    if (thread?.id) {
+      const likedInStorage = isLiked(thread.id);
+      if (likedInStorage !== hasLiked) {
+        if (likedInStorage) setHasLiked(true);
       }
-      return { likes: likeCount, replies: replyCount, reposts: repostCount };
-    });
-  }, [thread, replies]);
-
-  useEffect(() => {
-    if (!interactionFeedback.message) return undefined;
-    if (typeof window === 'undefined') return undefined;
-    const timeout = window.setTimeout(() => setInteractionFeedback({ type: null, message: '' }), 3500);
-    return () => window.clearTimeout(timeout);
-  }, [interactionFeedback.message]);
-
-  useEffect(() => {
-    if (!isReportModalOpen) return undefined;
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setIsReportModalOpen(false);
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isReportModalOpen]);
-
-  useEffect(() => {
-    if (!isReportModalOpen) return;
-    const dialog = reportDialogRef.current;
-    if (!dialog) return;
-    const firstInteractive = dialog.querySelector('input, textarea, button');
-    if (firstInteractive instanceof HTMLElement) {
-      firstInteractive.focus();
     }
-  }, [isReportModalOpen, reportDialogRef]);
-
-  const threadImageUrl = useMemo(
-    () => resolveThreadImage(thread?.image ?? thread?.image_url, baseUrl),
-    [thread?.image, thread?.image_url, baseUrl],
-  );
-
-  const threadAuthor = useMemo(() => getAuthorInfo(thread ?? {}, baseUrl), [thread, baseUrl]);
-  const bodySegments = useMemo(
-    () =>
-      (thread?.body ?? '')
-        .split(/\n{2,}|\r\n\r\n/)
-        .map((segment) => segment.trim())
-        .filter((segment) => segment.length > 0),
-    [thread?.body],
-  );
-  const postedAt = formatDateTime(thread?.created_at ?? thread?.createdAt);
-  const categories = Array.isArray(thread?.categories) ? thread.categories : [];
-  const tags = Array.isArray(thread?.tags) ? thread.tags.filter(Boolean) : [];
-  const handleReplySubmit = async (event) => {
-    event.preventDefault();
-    if (!token) {
-      setReplyStatus({ type: 'error', message: 'Sign in to reply to this thread.' });
-      return;
-    }
-
-    const content = replyBody.trim();
-    if (!content) {
-      setReplyStatus({ type: 'error', message: 'Add a short message before sending.' });
-      return;
-    }
-
-    if (!threadId) {
-      setReplyStatus({ type: 'error', message: 'This thread is unavailable.' });
-      return;
-    }
-
-    try {
-      setIsSubmittingReply(true);
-      setReplyStatus({ type: null, message: '' });
-
-      await threads.createReply(threadId, { body: content });
-
-      setReplyBody('');
-      setReplyStatus({ type: 'success', message: 'Reply posted.' });
-      loadReplies();
-    } catch (error) {
-      console.error('Failed to submit reply', error);
-      const message =
-        error?.data?.message ||
-        error?.data?.error ||
-        error?.message ||
-        'Unable to send your reply right now.';
-      setReplyStatus({ type: 'error', message });
-    } finally {
-      setIsSubmittingReply(false);
-    }
-  };
+  }, [isLiked, thread?.id, hasLiked]);
 
   const ensureSignedIn = useCallback(
     (message) => {
@@ -359,11 +277,13 @@ const ThreadDetailPage = () => {
         setHasLiked(false);
         setCounts((prev) => ({ ...prev, likes: Math.max(prev.likes - 1, 0) }));
         setInteractionFeedback({ type: 'info', message: 'Removed your appreciation.' });
+        toggleLike(threadId, false);
       } else {
         await threads.likeThread(threadId);
         setHasLiked(true);
         setCounts((prev) => ({ ...prev, likes: prev.likes + 1 }));
         setInteractionFeedback({ type: 'success', message: 'Appreciated this thread.' });
+        toggleLike(threadId, true);
       }
     } catch (error) {
       console.error('Failed to toggle appreciation', error);
@@ -373,7 +293,7 @@ const ThreadDetailPage = () => {
     } finally {
       setIsProcessingLike(false);
     }
-  }, [ensureSignedIn, hasLiked, threadId, threads, isProcessingLike]);
+  }, [ensureSignedIn, hasLiked, threadId, threads, isProcessingLike, toggleLike]);
 
   const handleToggleRepost = useCallback(async () => {
     if (!threadId) return;
@@ -447,6 +367,74 @@ const ThreadDetailPage = () => {
     setIsReportModalOpen(true);
   }, [ensureSignedIn, threadId, REPORT_REASONS]);
 
+  useEffect(() => {
+    if (!isReportModalOpen) return;
+    const dialog = reportDialogRef.current;
+    if (!dialog) return;
+    const firstInteractive = dialog.querySelector('input, textarea, button');
+    if (firstInteractive instanceof HTMLElement) {
+      firstInteractive.focus();
+    }
+  }, [isReportModalOpen, reportDialogRef]);
+
+  const threadImageUrl = useMemo(
+    () => resolveThreadImage(thread?.image ?? thread?.image_url, baseUrl),
+    [thread?.image, thread?.image_url, baseUrl],
+  );
+
+  const threadAuthor = useMemo(() => getAuthorInfo(thread ?? {}, baseUrl), [thread, baseUrl]);
+  const bodySegments = useMemo(
+    () =>
+      (thread?.body ?? '')
+        .split(/\n{2,}|\r\n\r\n/)
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0),
+    [thread?.body],
+  );
+  const postedAt = formatDateTime(thread?.created_at ?? thread?.createdAt);
+  const categories = Array.isArray(thread?.categories) ? thread.categories : [];
+  const tags = Array.isArray(thread?.tags) ? thread.tags.filter(Boolean) : [];
+
+  const handleReplySubmit = async (event) => {
+    event.preventDefault();
+    if (!token) {
+      setReplyStatus({ type: 'error', message: 'Sign in to reply to this thread.' });
+      return;
+    }
+
+    const content = replyBody.trim();
+    if (!content) {
+      setReplyStatus({ type: 'error', message: 'Add a short message before sending.' });
+      return;
+    }
+
+    if (!threadId) {
+      setReplyStatus({ type: 'error', message: 'This thread is unavailable.' });
+      return;
+    }
+
+    try {
+      setIsSubmittingReply(true);
+      setReplyStatus({ type: null, message: '' });
+
+      await threads.createReply(threadId, { body: content });
+
+      setReplyBody('');
+      setReplyStatus({ type: 'success', message: 'Reply posted.' });
+      loadReplies();
+    } catch (error) {
+      console.error('Failed to submit reply', error);
+      const message =
+        error?.data?.message ||
+        error?.data?.error ||
+        error?.message ||
+        'Unable to send your reply right now.';
+      setReplyStatus({ type: 'error', message });
+    } finally {
+      setIsSubmittingReply(false);
+    }
+  };
+
   const handleReportSubmit = useCallback(
     async (event) => {
       event.preventDefault();
@@ -485,249 +473,174 @@ const ThreadDetailPage = () => {
 
   const repliesEmpty = !isLoadingReplies && replies.length === 0;
 
+  if (isLoadingThread) {
+    return (
+      <>
+        <ForumNavbar />
+        <main className="forum-layout min-h-screen bg-[var(--color-bg-primary)]">
+          <div className="thread-detail-layout">
+            <ThreadDetailSkeleton />
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  if (threadError) {
+    return (
+      <>
+        <ForumNavbar />
+        <main className="forum-layout min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center">
+          <div className="text-center max-w-md p-8">
+            <h2 className="text-2xl font-bold mb-4 text-[var(--color-text-primary)]">Oops!</h2>
+            <p className="text-[var(--color-text-secondary)] mb-6">{threadError}</p>
+            <Link to="/forum/threads" className="primary-button">
+              Back to discussions
+            </Link>
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  if (!thread) return null;
+
   return (
     <>
       <ForumNavbar />
-      <main className="forum-layout thread-detail-page">
-        <div className="thread-return">
-          <Link to="/forum/threads" className="ghost-button">
-            ← Back to threads
+      <main className="forum-layout min-h-screen bg-[var(--color-bg-primary)]">
+        <div className="thread-detail-layout">
+          <Link to="/forum/threads" className="inline-flex items-center gap-2 text-[var(--color-text-secondary)] hover:text-white mb-6 transition-colors">
+            <FiArrowLeft size={20} />
+            Back to threads
           </Link>
-        </div>
 
-        {threadError && (
-          <div className="form-feedback form-feedback--error thread-detail__alert">{threadError}</div>
-        )}
-
-        {isLoadingThread ? (
-          <ThreadDetailSkeleton />
-        ) : thread ? (
-          <>
-            <section className="thread-hero">
-              <div className="thread-hero__labels">
-                {categories.length > 0 ? (
-                  categories.map((category) => (
-                    <span key={category?.id ?? category?.name} className="thread-hero__chip">
-                      {formatGoalLabel(category)}
-                    </span>
-                  ))
-                ) : (
-                  <span className="thread-hero__chip thread-hero__chip--muted">Cross-goal</span>
-                )}
+          <article className="thread-article">
+            <header className="thread-article__header">
+              <div className="thread-article__meta">
+                {categories.map((cat) => (
+                  <span key={cat.id || cat.name} className="thread-card__goal">
+                    {formatGoalLabel(cat)}
+                  </span>
+                ))}
               </div>
-              <h1>{thread?.title ?? 'Untitled thread'}</h1>
-              {bodySegments[0] && <p className="thread-hero__summary">{bodySegments[0]}</p>}
+              <h1 className="thread-article__title">{thread.title}</h1>
 
-              <div className="thread-hero__meta">
-                <div className="thread-hero__author">
-                  <img src={threadAuthor.avatar} alt={threadAuthor.name} />
-                  <div>
-                    <span>{threadAuthor.name}</span>
-                    {postedAt && <small>Posted {postedAt}</small>}
-                  </div>
+              <div className="thread-article__author">
+                <img src={threadAuthor.avatar} alt={threadAuthor.name} className="thread-article__author-avatar" />
+                <div className="thread-article__author-info">
+                  <span className="thread-article__author-name">{threadAuthor.name}</span>
+                  <span className="thread-article__date">Posted on {postedAt}</span>
                 </div>
-                <dl className="thread-hero__stats">
-                  <div>
-                    <dt>Appreciations</dt>
-                    <dd>{counts.likes}</dd>
-                  </div>
-                  <div>
-                    <dt>Replies</dt>
-                    <dd>{counts.replies}</dd>
-                  </div>
-                  <div>
-                    <dt>Shares</dt>
-                    <dd>{counts.reposts}</dd>
-                  </div>
-                </dl>
               </div>
-              <div className="thread-hero__actions" role="group" aria-label="Thread quick actions">
-                <button
-                  type="button"
-                  className={`thread-action${hasLiked ? ' is-active' : ''}`}
-                  onClick={handleToggleLike}
-                  disabled={isProcessingLike}
-                  aria-pressed={hasLiked}
-                  aria-label={`${hasLiked ? 'Remove appreciation from' : 'Appreciate'} this thread. Current count ${counts.likes}.`}
-                >
-                  <span className="thread-action__icon" aria-hidden="true">👍</span>
-                  <span>{hasLiked ? 'Appreciated' : 'Appreciate'}</span>
-                  <span className="thread-action__count" aria-hidden="true">{counts.likes}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`thread-action${hasReposted ? ' is-active' : ''}`}
-                  onClick={handleToggleRepost}
-                  disabled={isProcessingRepost}
-                  aria-pressed={hasReposted}
-                  aria-label={`${hasReposted ? 'Remove share from' : 'Share'} this thread. Current count ${counts.reposts}.`}
-                >
-                  <span className="thread-action__icon" aria-hidden="true">🔁</span>
-                  <span>{hasReposted ? 'Shared' : 'Share'}</span>
-                  <span className="thread-action__count" aria-hidden="true">{counts.reposts}</span>
-                </button>
-                <button
-                  type="button"
-                  className="thread-action thread-action--ghost"
-                  onClick={handleShareThread}
-                  disabled={isSharing}
-                  aria-label="Copy the link to this thread"
-                >
-                  <span className="thread-action__icon" aria-hidden="true">🔗</span>
-                  <span>{isSharing ? 'Sharing…' : 'Copy link'}</span>
-                </button>
-                <button
-                  type="button"
-                  className="thread-action thread-action--danger"
-                  onClick={handleReportThread}
-                  disabled={isProcessingReport}
-                  aria-label="Report this thread for review"
-                >
-                  <span className="thread-action__icon" aria-hidden="true">🚩</span>
-                  <span>{isProcessingReport ? 'Reporting…' : 'Report'}</span>
-                </button>
-              </div>
-              {interactionFeedback.message ? (
-                <div className={`thread-hero__feedback thread-hero__feedback--${interactionFeedback.type ?? 'info'}`}>
-                  {interactionFeedback.message}
-                </div>
-              ) : null}
-            </section>
+            </header>
 
-            <div className="thread-detail__layout">
-              <article className="thread-article">
-                {threadImageUrl && (
-                  <figure className="thread-article__media">
-                    <img src={threadImageUrl} alt="" />
-                    {thread?.image_caption && <figcaption>{thread.image_caption}</figcaption>}
-                  </figure>
-                )}
-
-                <div className="thread-article__body">
-                  {bodySegments.map((segment, index) => (
-                    <p key={`segment-${index}`}>{segment}</p>
-                  ))}
-                </div>
-              </article>
-
-              <aside className="thread-sidebar">
-                <div className="thread-sidebar__card">
-                  <h3>Thread details</h3>
-                  <ul>
-                    <li>
-                      <span>Posted</span>
-                      <strong>{postedAt || 'Not available'}</strong>
-                    </li>
-                    <li>
-                      <span>Category</span>
-                      <strong>
-                        {categories.length > 0 ? categories.map((cat) => cat?.name).filter(Boolean).join(', ') : 'General'}
-                      </strong>
-                    </li>
-                    <li>
-                      <span>Status</span>
-                      <strong>{thread?.status ?? 'Published'}</strong>
-                    </li>
-                  </ul>
-                </div>
-
-                {tags.length > 0 && (
-                  <div className="thread-sidebar__card">
-                    <h3>Tags</h3>
-                    <div className="thread-sidebar__tags">
-                      {tags.map((tag) => (
-                        <span key={tag}>#{tag}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </aside>
+            <div className="thread-article__body">
+              {threadImageUrl && (
+                <img src={threadImageUrl} alt="" loading="lazy" />
+              )}
+              {bodySegments.map((segment, index) => (
+                <p key={index}>{segment}</p>
+              ))}
             </div>
 
-            <section className="thread-replies">
-              <header className="thread-replies__header">
-                <div>
-                  <h2>Replies</h2>
-                  <p>
-                    {counts.replies > 0
-                      ? 'Join the conversation or help answer an open question.'
-                      : 'Be the first to share feedback or add your perspective.'}
-                  </p>
+            <footer className="thread-article__footer">
+              <button
+                className={`thread-action-button ${hasLiked ? 'active' : ''}`}
+                onClick={handleToggleLike}
+                disabled={isProcessingLike}
+              >
+                <FiHeart className={hasLiked ? 'fill-current' : ''} size={18} />
+                {counts.likes} Likes
+              </button>
+              <button className="thread-action-button" onClick={() => document.getElementById('reply-body')?.focus()}>
+                <FiMessageSquare size={18} />
+                {counts.replies} Replies
+              </button>
+              <button className="thread-action-button ml-auto" onClick={handleShareThread}>
+                <FiShare2 size={18} /> Share
+              </button>
+              <button className="thread-action-button text-red-400 hover:text-red-300 hover:bg-red-500/10 border-red-500/20" onClick={() => setIsReportModalOpen(true)}>
+                <FiFlag size={18} /> Report
+              </button>
+            </footer>
+          </article>
+
+          <section className="thread-replies">
+            <h3>Replies ({counts.replies})</h3>
+
+            {token ? (
+              <form className="reply-composer" onSubmit={handleReplySubmit}>
+                <label htmlFor="reply-body" className="sr-only">
+                  Reply
+                </label>
+                <textarea
+                  id="reply-body"
+                  ref={replyTextareaRef}
+                  value={replyBody}
+                  onChange={(e) => setReplyBody(e.target.value)}
+                  placeholder="Share an insight, drop a resource, or ask a follow-up question."
+                  rows={2}
+                  disabled={isSubmittingReply}
+                  style={{ overflow: 'hidden' }}
+                />
+                <div className="reply-composer__footer">
+                  {replyStatus.message && (
+                    <span className={`reply-status reply-status--${replyStatus.type}`}>{replyStatus.message}</span>
+                  )}
+                  <button type="submit" className="primary-button" disabled={isSubmittingReply}>
+                    {isSubmittingReply ? 'Submitting…' : 'Post reply'}
+                  </button>
                 </div>
-                <span className="thread-replies__count">{counts.replies}</span>
-              </header>
+              </form>
+            ) : (
+              <div className="reply-auth">
+                <p>Sign in to reply to this thread and follow the conversation.</p>
+                <Link to="/auth/login" className="primary-button">
+                  Sign in
+                </Link>
+              </div>
+            )}
 
-              {token ? (
-                <form className="reply-composer" onSubmit={handleReplySubmit}>
-                  <label htmlFor="reply-body" className="sr-only">
-                    Reply
-                  </label>
-                  <textarea
-                    id="reply-body"
-                    value={replyBody}
-                    onChange={(e) => setReplyBody(e.target.value)}
-                    placeholder="Share an insight, drop a resource, or ask a follow-up question."
-                    rows={4}
-                    disabled={isSubmittingReply}
-                  />
-                  <div className="reply-composer__footer">
-                    {replyStatus.message && (
-                      <span className={`reply-status reply-status--${replyStatus.type}`}>{replyStatus.message}</span>
-                    )}
-                    <button type="submit" className="primary-button" disabled={isSubmittingReply}>
-                      {isSubmittingReply ? 'Submitting…' : 'Post reply'}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <div className="reply-auth">
-                  <p>Sign in to reply to this thread and follow the conversation.</p>
-                  <Link to="/auth/login" className="primary-button">
-                    Sign in
-                  </Link>
-                </div>
-              )}
+            <ul className="reply-list">
+              {isLoadingReplies && <li className="reply-item reply-item--skeleton" />}
+              {replies.map((reply) => {
+                const author = getAuthorInfo(reply, baseUrl);
+                const replyPostedAt = formatDateTime(reply?.created_at ?? reply?.createdAt);
+                const replyBodySegments = (reply?.body ?? '')
+                  .split(/\n+/)
+                  .map((line) => line.trim())
+                  .filter(Boolean);
 
-              <ul className="reply-list">
-                {isLoadingReplies && <li className="reply-item reply-item--skeleton" />}
-                {replies.map((reply) => {
-                  const author = getAuthorInfo(reply, baseUrl);
-                  const replyPostedAt = formatDateTime(reply?.created_at ?? reply?.createdAt);
-                  const replyBodySegments = (reply?.body ?? '')
-                    .split(/\n+/)
-                    .map((line) => line.trim())
-                    .filter(Boolean);
-
-                  return (
-                    <li key={reply?.id ?? `${reply?.created_at}-${Math.random()}`} className="reply-item">
-                      <div className="reply-item__avatar">
-                        <img src={author.avatar} alt={author.name} />
+                return (
+                  <li key={reply?.id ?? `${reply?.created_at}-${Math.random()}`} className="reply-item">
+                    <div className="reply-item__avatar">
+                      <img src={author.avatar} alt={author.name} />
+                    </div>
+                    <div className="reply-item__body">
+                      <header>
+                        <strong>{author.name}</strong>
+                        {replyPostedAt && <time dateTime={reply?.created_at ?? reply?.createdAt}>{replyPostedAt}</time>}
+                      </header>
+                      <div className="reply-item__content">
+                        {replyBodySegments.map((segment, index) => (
+                          <p key={`reply-${reply?.id}-segment-${index}`}>{segment}</p>
+                        ))}
                       </div>
-                      <div className="reply-item__body">
-                        <header>
-                          <strong>{author.name}</strong>
-                          {replyPostedAt && <time dateTime={reply?.created_at ?? reply?.createdAt}>{replyPostedAt}</time>}
-                        </header>
-                        <div className="reply-item__content">
-                          {replyBodySegments.map((segment, index) => (
-                            <p key={`reply-${reply?.id}-segment-${index}`}>{segment}</p>
-                          ))}
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
 
-              {repliesEmpty && (
-                <div className="reply-empty">
-                  <h3>No replies yet</h3>
-                  <p>Have a related project or question? Leave a note so others can build on it.</p>
-                </div>
-              )}
-            </section>
-          </>
-        ) : null}
+            {repliesEmpty && (
+              <div className="reply-empty">
+                <h3>No replies yet</h3>
+                <p>Have a related project or question? Leave a note so others can build on it.</p>
+              </div>
+            )}
+          </section>
+        </div>
       </main>
       {isReportModalOpen ? (
         <div className="thread-report-modal">
