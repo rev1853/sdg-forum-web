@@ -47,7 +47,7 @@ export interface ThreadSummary {
   [key: string]: unknown;
 }
 
-export interface ThreadDetail extends ThreadSummary {}
+export interface ThreadDetail extends ThreadSummary { }
 
 export interface ThreadListQuery extends PaginatedQuery {
   tags?: string | string[];
@@ -56,9 +56,9 @@ export interface ThreadListQuery extends PaginatedQuery {
   [key: string]: string | number | boolean | string[] | null | undefined;
 }
 
-export interface ThreadListResponse extends PaginatedResponse<ThreadSummary> {}
+export interface ThreadListResponse extends PaginatedResponse<ThreadSummary> { }
 
-export interface ThreadRepliesResponse extends PaginatedResponse<ThreadSummary> {}
+export interface ThreadRepliesResponse extends PaginatedResponse<ThreadSummary> { }
 
 export interface ThreadCreatePayload {
   title: string;
@@ -83,4 +83,16 @@ export interface ThreadReportPayload {
 
 export interface ThreadStatusUpdatePayload {
   status: string;
+}
+
+export interface TopThreadItem {
+  interactionCount: number;
+  likes: number;
+  reposts: number;
+  thread: ThreadSummary;
+}
+
+export interface TopThreadsResponse {
+  since: string;
+  threads: TopThreadItem[];
 }

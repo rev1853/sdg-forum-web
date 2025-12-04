@@ -7,6 +7,7 @@ import type {
   ThreadRepliesResponse,
   ThreadReportPayload,
   ThreadReplyPayload,
+  TopThreadsResponse,
 } from '../models';
 
 const appendArrayValues = (formData: FormData, key: string, values: string[] | undefined): void => {
@@ -75,6 +76,7 @@ export interface ThreadsService {
   repostThread(threadId: string): Promise<void>;
   removeRepost(threadId: string): Promise<void>;
   reportThread(threadId: string, payload: ThreadReportPayload): Promise<void>;
+  getTopThreads(): Promise<TopThreadsResponse | void>;
 }
 
 export const createThreadsService = (client: ApiClient): ThreadsService => ({
@@ -142,5 +144,11 @@ export const createThreadsService = (client: ApiClient): ThreadsService => ({
       method: 'POST',
       body: payload,
       requiresAuth: true,
+    }),
+  getTopThreads: () =>
+    client.request<TopThreadsResponse | void>({
+      path: '/dashboard/top-threads',
+      method: 'GET',
+      requiresAuth: false,
     }),
 });

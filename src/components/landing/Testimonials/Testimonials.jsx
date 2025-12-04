@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useApi } from '../../../api/ApiProvider';
 import './Testimonials.css';
 
-const API_DOCS_URL = 'https://sdg-forum-api.truesurvi4.xyz/docs.json';
-const TOP_THREADS_URL = 'https://sdg-forum-api.truesurvi4.xyz/dashboard/top-threads';
 const THREAD_ROUTE_BASE = '/forum/threads';
 
 const createFallbackAvatar = (seed) =>
-  `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}&backgroundColor=4C1D95,1E3A8A&fontWeight=700`;
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(seed)}&background=4C1D95&color=fff&bold=true`;
 
 const FALLBACK_TWEETS = [
   {
@@ -90,7 +89,7 @@ const normaliseText = (thread) => {
   return `${cleaned.slice(0, 157)}…`;
 };
 
-const resolveAvatar = (thread) => {
+const resolveAvatar = (thread, baseUrl) => {
   const author = thread?.author ?? {};
   const candidates = [
     author.profilePicture,
@@ -107,20 +106,22 @@ const resolveAvatar = (thread) => {
     if (candidate.startsWith('//')) {
       return `https:${candidate}`;
     }
-    return `https://sdg-forum-api.truesurvi4.xyz/${candidate.replace(/^\/+/, '')}`;
+    // Use the provided baseUrl or fallback
+    const apiBase = baseUrl || 'https://sdg-forum-api.truesurvi4.xyz';
+    return `${apiBase.replace(/\/+$/, '')}/${candidate.replace(/^\/+/, '')}`;
   }
 
   const seed = author.name ?? author.username ?? `Thread ${thread?.id ?? ''}`;
-  return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`;
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(seed)}&background=4C1D95&color=fff&bold=true`;
 };
 
-const mapThreadToCard = (thread, index) => {
+const mapThreadToCard = (thread, index, baseUrl) => {
   if (!thread || typeof thread !== 'object') return null;
   const identifier = thread.id ?? thread.thread_id ?? `thread-${index}`;
   const url = `${THREAD_ROUTE_BASE}/${encodeURIComponent(thread.id ?? identifier)}`;
   return {
     id: identifier,
-    avatar: resolveAvatar(thread),
+    avatar: resolveAvatar(thread, baseUrl),
     text: normaliseText(thread),
     handle: pickAuthorHandle(thread),
     url,
@@ -128,6 +129,7 @@ const mapThreadToCard = (thread, index) => {
 };
 
 const Testimonials = () => {
+  const { threads, baseUrl } = useApi();
   const [docsInfo, setDocsInfo] = useState(null);
   const [testimonials, setTestimonials] = useState(FALLBACK_TWEETS);
   const [isLoading, setIsLoading] = useState(true);
@@ -142,26 +144,42 @@ const Testimonials = () => {
       setError('');
 
       try {
+        const docsUrl = `${baseUrl.replace(/\/+$/, '')}/docs.json`;
+
         const [docsResponse, threadsResponse] = await Promise.allSettled([
-          fetch(API_DOCS_URL, { headers: { Accept: 'application/json' } }),
-          fetch(TOP_THREADS_URL, { headers: { Accept: 'application/json' } }),
+          fetch(docsUrl, { headers: { Accept: 'application/json' } }),
+          threads.getTopThreads(),
         ]);
 
         if (!cancelled) {
           if (docsResponse.status === 'fulfilled' && docsResponse.value.ok) {
-            const docsJson = await docsResponse.value.json();
-            setDocsInfo(docsJson?.info ?? null);
+            try {
+              const docsJson = await docsResponse.value.json();
+              setDocsInfo(docsJson?.info ?? null);
+            } catch (e) {
+              console.warn('Failed to parse docs.json', e);
+            }
           }
 
-          if (threadsResponse.status === 'fulfilled' && threadsResponse.value.ok) {
-            const threadsJson = await threadsResponse.value.json();
-            const collection =
-              (Array.isArray(threadsJson?.data) && threadsJson.data) ||
-              (Array.isArray(threadsJson?.threads) && threadsJson.threads) ||
-              [];
+          if (threadsResponse.status === 'fulfilled' && threadsResponse.value) {
+            const threadsJson = threadsResponse.value;
+            // Handle TopThreadsResponse structure: { threads: [{ thread: {...} }] }
+            // Or fallback to standard list structure if API changes
+            let collection = [];
+
+            if (Array.isArray(threadsJson?.threads)) {
+              // Check if it's an array of TopThreadItem (with .thread property)
+              if (threadsJson.threads.length > 0 && threadsJson.threads[0].thread) {
+                collection = threadsJson.threads.map(item => item.thread);
+              } else {
+                collection = threadsJson.threads;
+              }
+            } else if (Array.isArray(threadsJson?.data)) {
+              collection = threadsJson.data;
+            }
 
             const mapped = collection
-              .map(mapThreadToCard)
+              .map((t, i) => mapThreadToCard(t, i, baseUrl))
               .filter(Boolean)
               .slice(0, 9);
 
@@ -172,25 +190,29 @@ const Testimonials = () => {
               setTestimonials(FALLBACK_TWEETS);
               setIsLiveData(false);
             }
-          } else if (threadsResponse.status === 'fulfilled' && !threadsResponse.value.ok) {
+          } else {
+            // If threads fetch failed
             setTestimonials(FALLBACK_TWEETS);
             setIsLiveData(false);
+            if (threadsResponse.status === 'rejected') {
+              console.error('Failed to fetch top threads:', threadsResponse.reason);
+            }
           }
 
           if (
             (docsResponse.status === 'rejected' || (docsResponse.value && !docsResponse.value.ok)) &&
-            (threadsResponse.status === 'rejected' || (threadsResponse.value && !threadsResponse.value.ok))
+            (threadsResponse.status === 'rejected' || !threadsResponse.value)
           ) {
             setError('Unable to reach the SDG Forum API right now. Showing community highlights instead.');
           } else if (
-            threadsResponse.status === 'rejected' ||
-            (threadsResponse.status === 'fulfilled' && !threadsResponse.value.ok)
+            threadsResponse.status === 'rejected' || !threadsResponse.value
           ) {
             setError('Top thread metrics are temporarily unavailable. Showing highlights instead.');
           }
         }
       } catch (caughtError) {
         if (!cancelled) {
+          console.error('Testimonials fetch error:', caughtError);
           setError(caughtError instanceof Error ? caughtError.message : 'Unexpected error while connecting to the API.');
           setTestimonials(FALLBACK_TWEETS);
           setIsLiveData(false);
@@ -207,7 +229,7 @@ const Testimonials = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [threads, baseUrl]);
 
   const marqueeRows = useMemo(() => {
     if (!Array.isArray(testimonials)) return [];
@@ -237,14 +259,14 @@ const Testimonials = () => {
             {docsInfo ? (
               <span>
                 Connected to <strong>{docsInfo?.title ?? 'SDG Forum API'}</strong> (v{docsInfo?.version ?? '—'}) •{' '}
-                <a href={API_DOCS_URL} target="_blank" rel="noreferrer">
+                <a href={`${baseUrl.replace(/\/+$/, '')}/docs.json`} target="_blank" rel="noreferrer">
                   docs.json
                 </a>
               </span>
             ) : (
               <span>
                 {isLoading ? 'Connecting to ' : 'Last checked '}
-                <code className="testimonials-endpoint">sdg-forum-api.truesurvi4.xyz</code>
+                <code className="testimonials-endpoint">{new URL(baseUrl).hostname}</code>
               </span>
             )}
           </div>

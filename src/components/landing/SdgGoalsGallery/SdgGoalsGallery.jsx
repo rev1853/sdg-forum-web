@@ -14,55 +14,7 @@ const SdgGoalsGallery = () => {
   const trackRef = useRef(null);
 
   useEffect(() => {
-    if (!sectionRef.current || !trackRef.current || !viewportRef.current) return;
-
-    const mm = gsap.matchMedia();
-
-    const ctx = gsap.context(() => {
-      mm.add('(min-width: 900px)', () => {
-        const section = sectionRef.current;
-        const track = trackRef.current;
-        const viewport = viewportRef.current;
-        const header = document.querySelector('.header');
-        if (!section || !track || !viewport) return () => { };
-
-        const getScrollAmount = () => Math.max(0, track.scrollWidth - viewport.offsetWidth);
-        const hideHeader = () => {
-          if (header) header.classList.add('header--hidden');
-        };
-        const showHeader = () => {
-          if (header) header.classList.remove('header--hidden');
-        };
-
-        const tween = gsap.to(track, {
-          x: () => -getScrollAmount(),
-          ease: 'none',
-          scrollTrigger: {
-            trigger: section,
-            start: 'top top',
-            end: () => `+=${getScrollAmount()}`,
-            scrub: true,
-            pin: true,
-            anticipatePin: 1,
-            invalidateOnRefresh: true,
-            onEnter: hideHeader,
-            onEnterBack: hideHeader,
-            onLeave: showHeader,
-            onLeaveBack: showHeader
-          }
-        });
-
-        return () => {
-          tween.kill();
-          showHeader();
-        };
-      });
-    }, sectionRef);
-
-    return () => {
-      ctx.revert();
-      mm.revert();
-    };
+    // GSAP scroll logic removed for Masonry layout
   }, []);
 
   return (

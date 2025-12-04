@@ -150,14 +150,15 @@
 
 .feature-card {
   user-select: none;
-  background: #060010;
-  border: 1px solid rgba(169, 148, 184, 0.2);
-  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
   padding: 2rem;
   text-align: left;
   text-decoration: none;
-  transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -168,6 +169,8 @@
   --glow-x: 50%;
   --glow-y: 50%;
   --glow-intensity: 0;
+  box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
 }
 
 .feature-card::before {
@@ -176,42 +179,48 @@
   top: 0;
   left: 0;
   width: 100%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(163, 148, 184, 0.3), transparent);
-  transition: opacity 0.3s ease;
+  height: 100%;
+  background: radial-gradient(800px circle at var(--glow-x) var(--glow-y),
+      rgba(255, 255, 255, 0.06),
+      transparent 40%);
   opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .feature-card::after {
   content: '';
   position: absolute;
   inset: 0;
-  padding: 1px;
-  background: radial-gradient(
-    200px circle at var(--glow-x) var(--glow-y),
-    rgba(132, 0, 255, calc(var(--glow-intensity) * 0.8)) 0%,
-    rgba(132, 0, 255, calc(var(--glow-intensity) * 0.4)) 30%,
-    transparent 60%
-  );
   border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(600px circle at var(--glow-x) var(--glow-y),
+      rgba(255, 255, 255, 0.4),
+      transparent 40%);
   mask:
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
-  mask-composite: subtract;
+  mask-composite: exclude;
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
-  pointer-events: none;
+  opacity: 0;
   transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .feature-card:hover {
-  box-shadow: 0 4px 40px -15px rgba(46, 24, 78, 0.4) !important;
-  background: #0d0716;
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.4) !important;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
-.feature-card:hover::before {
+.feature-card:hover::before,
+.feature-card:hover::after {
   opacity: 1;
 }
 
@@ -222,13 +231,14 @@
   justify-content: flex-start;
   align-items: center;
   flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .feature-card h3 {
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 600;
   color: #fff;
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.5rem;
   letter-spacing: -0.01em;
   flex-shrink: 0;
   position: relative;
@@ -236,23 +246,22 @@
 }
 
 .feature-card h2 {
-  font-size: 6rem;
+  font-size: 4.5rem;
   position: relative;
-  top: 22px;
-  margin: 0;
+  margin: 0 0 1rem 0;
   font-weight: 800;
-  background: linear-gradient(135deg, #fff 0%, #8660fa 20%, #a855f7 40%, #8400ff 60%, #a855f7 80%, #fff 100%);
-  background-size: 200% 200%;
+  background: linear-gradient(135deg, #fff 0%, #a855f7 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  animation: gradientShift 4s ease-in-out infinite;
   z-index: 10;
+  line-height: 1;
+  letter-spacing: -0.04em;
 }
 
 .feature-card p {
-  color: rgba(161, 148, 184, 0.9);
-  line-height: 1;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.5;
   font-size: 0.95rem;
   text-align: left;
   max-width: 100%;
