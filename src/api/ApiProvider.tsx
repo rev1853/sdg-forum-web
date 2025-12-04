@@ -47,7 +47,7 @@ export const ApiProvider = ({
   onUnauthorized,
 }: ApiProviderProps) => {
   const [token, setToken] = useState<string | null>(initialToken);
-  const resolvedBaseUrl = baseUrl ?? DEFAULT_API_BASE_URL;
+  const resolvedBaseUrl = baseUrl || DEFAULT_API_BASE_URL;
 
   const client = useMemo(
     () =>

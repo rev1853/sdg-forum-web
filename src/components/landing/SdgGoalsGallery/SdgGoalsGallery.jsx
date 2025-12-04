@@ -65,15 +65,4 @@ const SdgGoalsGallery = () => {
 };
 
 export default SdgGoalsGallery;
-<div className="sdg-gallery-overlay sdg-gallery-overlay--top">
-  <SplitText
-    text="Every Goal, One Shared Mission"
-    tag="h2"
-    className="sdg-gallery-heading"
-    textAlign="center"
-    splitType="words"
-    delay={45}
-    duration={0.55}
-  />
-  <span className="sdg-gallery-badge">17 Global Goals</span>
-</div>
+

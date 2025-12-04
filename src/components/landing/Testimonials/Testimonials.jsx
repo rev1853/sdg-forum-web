@@ -266,7 +266,15 @@ const Testimonials = () => {
             ) : (
               <span>
                 {isLoading ? 'Connecting to ' : 'Last checked '}
-                <code className="testimonials-endpoint">{new URL(baseUrl).hostname}</code>
+                <code className="testimonials-endpoint">
+                  {(() => {
+                    try {
+                      return new URL(baseUrl).hostname;
+                    } catch {
+                      return 'SDG Forum API';
+                    }
+                  })()}
+                </code>
               </span>
             )}
           </div>
