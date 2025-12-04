@@ -45,12 +45,12 @@ const ShowcasePage = () => {
   return (
     <>
       <section className="showcase-wrapper">
-        <title>React Bits - Showcase 🎉</title>
+        <title>SDG Forum - Showcase 🎉</title>
 
         <div className="showcase-header">
           <h1 className="showcase-title">Community Showcase</h1>
           <p className="showcase-subtitle">
-            See how developers around the world are using React Bits in their projects
+            See how developers around the world are using SDG Forum in their projects
           </p>
           <FadeContent blur delay={500}>
             <a

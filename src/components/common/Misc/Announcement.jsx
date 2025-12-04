@@ -104,7 +104,7 @@ const Announcement = () => {
           const file = new File([blob], 'vue-bits.jpg', { type: 'image/jpeg' });
 
           await navigator.share({
-            title: 'Vue Bits - Official Vue Port of React Bits',
+            title: 'SDG Forum - Official Vue Port of SDG Forum',
             text: shareText,
             files: [file]
           });
@@ -112,7 +112,7 @@ const Announcement = () => {
           console.warn('Primary share failed', shareError);
           try {
             await navigator.share({
-              title: 'Vue Bits - Official Vue Port of React Bits',
+              title: 'SDG Forum - Official Vue Port of SDG Forum',
               text: shareText,
               url: window.location.origin
             });
