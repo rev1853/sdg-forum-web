@@ -96,18 +96,11 @@ export const useGoogleSignIn = (onCredential) => {
     }
 
     google.prompt((notification) => {
-      if (notification?.isNotDisplayed?.()) {
-        const reason = notification.getNotDisplayedReason?.();
-        if (reason && reason !== 'suppressed_by_user') {
-          setError('Google Sign-In could not open. Disable pop-up blockers and try again.');
-        }
-      }
-
-      if (notification?.isSkippedMoment?.()) {
-        const reason = notification.getSkippedReason?.();
-        if (reason && reason !== 'user_cancelled') {
-          setError('Google Sign-In was skipped. Please try again.');
-        }
+      // FedCM handles the UI, so we don't need to manually handle display/skip moments here
+      // to avoid warnings about deprecated methods.
+      if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
+        // Optional: Log for debugging if needed, but avoid setting user-facing errors
+        // console.debug('Google One Tap notification status:', notification);
       }
     });
   }, []);
