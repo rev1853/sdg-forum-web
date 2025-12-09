@@ -30,38 +30,40 @@ const TermsPage = () => {
   }, []);
 
   return (
-    <section className="themed-page forum-page">
-      <title>Terms & Conditions • SDG Forum</title>
+    <>
       <ForumNavbar />
+      <main className="forum-layout min-h-screen bg-[var(--color-bg-primary)]">
+        <title>Terms & Conditions • SDG Forum</title>
 
-      <div className="terms-wrapper">
-        <header className="terms-hero">
-          <span className="badge">Community first</span>
-          <h1>Terms & Conditions</h1>
-          <p>
-            These guidelines keep the SDG Forum collaborative, equitable, and safe. By using the platform you agree to the
-            following terms. Reach out to the moderation team if you have questions.
-          </p>
-        </header>
+        <div className="terms-wrapper max-w-4xl mx-auto px-6 py-12">
+          <header className="terms-hero mb-12 text-center">
+            <span className="badge inline-block px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-sm font-medium mb-4">Community first</span>
+            <h1 className="text-4xl md:text-5xl font-bold mb-6 text-white">Terms & Conditions</h1>
+            <p className="text-lg text-gray-400 max-w-2xl mx-auto">
+              These guidelines keep the SDG Forum collaborative, equitable, and safe. By using the platform you agree to the
+              following terms. Reach out to the moderation team if you have questions.
+            </p>
+          </header>
 
-        <div className="terms-grid">
-          {sections.map(section => (
-            <article key={section.heading} className="terms-card">
-              <h2>{section.heading}</h2>
-              <p>{section.body}</p>
-            </article>
-          ))}
+          <div className="terms-grid grid gap-8">
+            {sections.map(section => (
+              <article key={section.heading} className="terms-card p-6 rounded-2xl bg-gray-800/50 border border-gray-700/50">
+                <h2 className="text-xl font-semibold text-white mb-3">{section.heading}</h2>
+                <p className="text-gray-300 leading-relaxed">{section.body}</p>
+              </article>
+            ))}
+          </div>
+
+          <footer className="terms-footer mt-16 pt-8 border-t border-gray-800 text-center text-gray-500">
+            <p className="mb-2">Last updated • September 2024</p>
+            <p>
+              Need clarification? Email <a href="mailto:hello@sdgforum.org" className="text-blue-400 hover:text-blue-300 transition-colors">hello@sdgforum.org</a> or start a private thread
+              with our moderators.
+            </p>
+          </footer>
         </div>
-
-        <footer className="terms-footer">
-          <p>Last updated • September 2024</p>
-          <p>
-            Need clarification? Email <a href="mailto:hello@sdgforum.org">hello@sdgforum.org</a> or start a private thread
-            with our moderators.
-          </p>
-        </footer>
-      </div>
-    </section>
+      </main>
+    </>
   );
 };
 

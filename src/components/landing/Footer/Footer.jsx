@@ -23,15 +23,7 @@ const navSections = [
       { label: 'Terms & Conditions', to: '/terms' }
     ]
   },
-  {
-    title: 'Support',
-    links: [
-      { label: 'Contact Moderators', to: '/forum/chat' },
-      { label: 'Email Us', href: 'mailto:hello@sdgforum.org' },
-      { label: 'Impact Guidelines', to: '/forum/threads' },
-      { label: 'Documentation', to: '/showcase' }
-    ]
-  }
+
 ];
 
 const Footer = () => {
@@ -40,7 +32,7 @@ const Footer = () => {
       <footer className="landing-footer">
         <div className="footer-wrapper">
           <div className="footer-brand">
-            <img src={LOGO_SRC} alt="SDG Forum" className="footer-logo" />
+
             <p className="footer-tagline">
               A collaboration hub for Sustainable Development Goal innovators, storytellers, and partners. Share your
               progress, gather feedback, and mobilise support worldwide.
