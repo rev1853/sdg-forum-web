@@ -155,12 +155,16 @@ const CreateThreadPage = () => {
       navigate('/forum/threads');
     } catch (caughtError) {
       console.error('Failed to create thread', caughtError);
-      const message =
-        caughtError?.data?.message ||
-        caughtError?.data?.error ||
-        caughtError?.message ||
-        'Failed to create thread. Try again shortly.';
-      setError(message);
+      if (caughtError?.status === 400 && caughtError?.data?.review_score !== undefined) {
+        setError(`Thread rejected by AI review (Score: ${caughtError.data.review_score}). Please improve the content quality and try again.`);
+      } else {
+        const message =
+          caughtError?.data?.message ||
+          caughtError?.data?.error ||
+          caughtError?.message ||
+          'Failed to create thread. Try again shortly.';
+        setError(message);
+      }
     } finally {
       if (window.location.pathname.includes('/create')) {
         setIsSubmitting(false);

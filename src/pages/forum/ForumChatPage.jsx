@@ -14,6 +14,7 @@ const FALLBACK_ROOMS = [
     id: 'global',
     name: 'Global announcements',
     description: 'Platform updates and community-wide news.',
+    isFallback: true,
     messages: [
       {
         id: 'global-1',
@@ -33,6 +34,7 @@ const FALLBACK_ROOMS = [
     id: 'goal-6',
     name: 'SDG 6 • Clean Water',
     description: 'Water purification, sanitation systems, watershed protection.',
+    isFallback: true,
     messages: [
       {
         id: 'goal-6-1',
@@ -163,7 +165,7 @@ const ForumChatPage = () => {
     const loadRooms = async () => {
       setIsLoadingRooms(true);
       try {
-        const response = await chat.listGroups({ pageSize: 8 });
+        const response = await chat.listGroups({ pageSize: 50 });
         if (cancelled) return;
 
         const mappedRooms = (Array.isArray(response?.data) ? response.data : [])
@@ -238,10 +240,13 @@ const ForumChatPage = () => {
       return;
     }
 
-    if (!supportsLiveChat) {
-      const fallbackRoom = FALLBACK_ROOMS.find((room) => room.id === activeRoomId);
+    const activeRoom = rooms.find((room) => room.id === activeRoomId);
+    const isFallbackRoom = activeRoom?.isFallback;
+
+    if (!supportsLiveChat || isFallbackRoom) {
+      const fallbackRoom = isFallbackRoom ? activeRoom : FALLBACK_ROOMS.find((room) => room.id === activeRoomId);
       const fallbackMessages = fallbackRoom
-        ? fallbackRoom.messages.map((message) => ({
+        ? (fallbackRoom.messages || []).map((message) => ({
           ...message,
           groupId: fallbackRoom.id,
           initials: getInitials(message.author),
@@ -249,7 +254,11 @@ const ForumChatPage = () => {
         }))
         : [];
       setMessages(fallbackMessages);
-      setStatusMessage('Live chat API is unavailable. Showing a preview instead.');
+      setStatusMessage(
+        isFallbackRoom
+          ? 'This is a preview room. Messages here are not saved.'
+          : 'Live chat API is unavailable. Showing a preview instead.'
+      );
       setIsLoadingMessages(false);
       return;
     }
@@ -312,10 +321,14 @@ const ForumChatPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeRoomId, chat, supportsLiveChat, token]);
+  }, [activeRoomId, chat, supportsLiveChat, token, rooms]);
 
   useEffect(() => {
     if (!supportsLiveChat || !activeRoomId || !token) return undefined;
+
+    const activeRoom = rooms.find((room) => room.id === activeRoomId);
+    if (activeRoom?.isFallback) return undefined;
+
     if (!isConnected || joinedRoomId !== activeRoomId) return undefined; // Wait for REST join for THIS room
 
     let isMounted = true;
@@ -341,7 +354,7 @@ const ForumChatPage = () => {
       leaveSocketGroup(activeRoomId).catch(() => undefined);
       // We do NOT call chat.leaveGroup here to avoid thrashing REST membership when switching views
     };
-  }, [activeRoomId, chat, joinSocketGroup, leaveSocketGroup, supportsLiveChat, token, isConnected, joinedRoomId]);
+  }, [activeRoomId, chat, joinSocketGroup, leaveSocketGroup, supportsLiveChat, token, isConnected, joinedRoomId, rooms]);
 
   // Expose socket error to UI
   useEffect(() => {
@@ -368,12 +381,16 @@ const ForumChatPage = () => {
 
   const connectionLabel = useMemo(() => {
     if (!token) return 'Preview';
+
+    const activeRoom = rooms.find((room) => room.id === activeRoomId);
+    if (activeRoom?.isFallback) return 'Preview';
+
     if (socketStatus === 'connected') return 'Live now';
     if (socketStatus === 'connecting') return 'Connecting…';
     if (socketStatus === 'error') return 'Offline';
     if (socketStatus === 'disconnected') return 'Offline';
     return 'Idle';
-  }, [socketStatus, token]);
+  }, [socketStatus, token, activeRoomId, rooms]);
 
   const isSocketOffline = socketStatus === 'error' || socketStatus === 'disconnected';
   const showConversationOverlay = !token;
@@ -461,6 +478,12 @@ const ForumChatPage = () => {
 
     if (!supportsLiveChat) {
       setSendError('Live chat is temporarily unavailable.');
+      return;
+    }
+
+    const activeRoom = rooms.find((room) => room.id === activeRoomId);
+    if (activeRoom?.isFallback) {
+      setSendError('Cannot send messages in preview mode.');
       return;
     }
 

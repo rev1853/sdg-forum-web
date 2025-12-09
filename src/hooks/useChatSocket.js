@@ -33,7 +33,7 @@ const createSocket = ({ baseUrl, token }) => {
   return io(baseUrl, {
     auth,
     autoConnect: false,
-    transports: ['polling', 'websocket'],
+    transports: ['polling'],
     withCredentials: false,
     extraHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
@@ -89,6 +89,7 @@ export const useChatSocket = ({
     setLastError(null);
 
     const handleConnect = () => {
+      console.log('Socket connected successfully via', socket.io.engine.transport.name);
       setStatus('connected');
       setLastError(null);
     };
