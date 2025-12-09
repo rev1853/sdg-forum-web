@@ -38,42 +38,109 @@ const ForumThreadsPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [userThreads, setUserThreads] = useState([]);
-  const [isLoadingUserThreads, setIsLoadingUserThreads] = useState(false);
-
   // ... (keep existing useEffects for scrolling, search debounce, categories, and main threads)
 
+  // Debounce search input
   useEffect(() => {
-    if (!user?.id) {
-      setUserThreads([]);
-      return;
-    }
+    const handler = setTimeout(() => {
+      setFilters((current) => ({ ...current, search: searchInput.trim() }));
+    }, 500); // 500ms debounce
 
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchInput]);
+
+  // Load categories
+  useEffect(() => {
+    let cancelled = false;
+    const loadCategories = async () => {
+      if (!categories) return;
+      try {
+        const response = await categories.list();
+        if (cancelled) return;
+        const categoryData = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+            ? response
+            : [];
+        const options = [
+          { value: 'all', label: 'All discussions' },
+          ...categoryData.map((cat) => ({
+            value: cat.id,
+            label: formatGoalLabel(cat),
+          })),
+        ];
+        setCategoryOptions(options);
+      } catch (err) {
+        console.error('Failed to load categories', err);
+      }
+    };
+    loadCategories();
+    return () => { cancelled = true; };
+  }, [categories]);
+
+  // Load main threads
+  useEffect(() => {
     let cancelled = false;
 
-    const loadUserThreads = async () => {
-      setIsLoadingUserThreads(true);
+    const loadThreads = async () => {
+      if (!threads) {
+        console.error('Threads service not available');
+        setError('Service unavailable');
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(true);
+      setError('');
+
+      // Safety timeout
+      const timeoutId = setTimeout(() => {
+        setIsLoading(false);
+        setError('Request timed out');
+      }, 5000);
+
       try {
-        const response = await users.listThreads(user.id, { page: 1, pageSize: 5 });
+        const response = await threads.listThreads({
+          page: 1,
+          pageSize: PAGE_SIZE,
+          search: filters.search || undefined,
+          categories: filters.category !== 'all' ? filters.category : undefined,
+        });
+
+        clearTimeout(timeoutId);
+
         if (cancelled) return;
 
         const data = Array.isArray(response?.data)
           ? response.data
-          : Array.isArray(response?.threads)
-            ? response.threads
+          : Array.isArray(response)
+            ? response
             : [];
 
-        setUserThreads(data);
-      } catch (err) {
-        // console.error('Failed to load user threads', err);
+        setThreadItems(data);
+      } catch (caughtError) {
+        clearTimeout(timeoutId);
+        if (cancelled) return;
+        console.error('Failed to load threads', caughtError);
+        const message =
+          caughtError?.data?.message ||
+          caughtError?.data?.error ||
+          caughtError?.message ||
+          'Unable to load threads right now.';
+        setError(message);
+        setThreadItems([]);
       } finally {
-        if (!cancelled) setIsLoadingUserThreads(false);
+        // Always clear loading state, even if cancelled, to prevent UI hanging
+        setIsLoading(false);
       }
     };
 
-    loadUserThreads();
+    loadThreads();
     return () => { cancelled = true; };
-  }, [users, user?.id]);
+  }, [threads, filters]);
+
+  // ... (keep loadThreads effect)
 
   const activeCategoryLabel = useMemo(() => {
     const match = categoryOptions.find((option) => option.value === filters.category);
@@ -119,7 +186,6 @@ const ForumThreadsPage = () => {
         <div className="forum-content-grid">
           <div className="forum-main-column">
             <section className="forum-toolbar">
-              {/* ... (keep existing toolbar content) ... */}
               <form className="forum-searchbar" onSubmit={handleSearchSubmit}>
                 <span className="forum-searchbar__icon" aria-hidden="true">
                   <FiSearch size={18} />
@@ -147,7 +213,7 @@ const ForumThreadsPage = () => {
                 )}
               </form>
 
-              <div className="forum-filter">
+              <div className="forum-filter flex gap-2">
                 <select id="thread-category" value={filters.category} onChange={handleCategoryChange}>
                   {categoryOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -207,46 +273,6 @@ const ForumThreadsPage = () => {
               </div>
             </section>
           </div>
-
-          <aside className="forum-sidebar">
-            {user && (
-              <div className="sidebar-card">
-                <h3><FiClock /> Your Recent Threads</h3>
-                {isLoadingUserThreads ? (
-                  <div className="animate-pulse space-y-4">
-                    <div className="h-4 bg-gray-700/50 rounded w-3/4"></div>
-                    <div className="h-4 bg-gray-700/50 rounded w-1/2"></div>
-                  </div>
-                ) : userThreads.length > 0 ? (
-                  <ul className="sidebar-thread-list">
-                    {userThreads.map(thread => (
-                      <li key={thread.id} className="sidebar-thread-item">
-                        <Link to={`/forum/threads/${thread.id}`} className="sidebar-thread-link">
-                          {thread.title}
-                        </Link>
-                        <span className="sidebar-thread-meta">
-                          {new Date(thread.created_at || thread.createdAt).toLocaleDateString()}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-gray-400">You haven't posted any threads yet.</p>
-                )}
-                <div className="mt-4 pt-4 border-t border-gray-700/50">
-                  <Link to="/profile" className="text-sm text-blue-400 hover:text-blue-300">View all activity &rarr;</Link>
-                </div>
-              </div>
-            )}
-
-            {!user && (
-              <div className="sidebar-card">
-                <h3>Join the conversation</h3>
-                <p className="text-sm text-gray-400 mb-4">Sign in to track your discussions and connect with other changemakers.</p>
-                <Link to="/auth/login" className="primary-button w-full text-center justify-center">Sign In</Link>
-              </div>
-            )}
-          </aside>
         </div>
       </main>
     </>

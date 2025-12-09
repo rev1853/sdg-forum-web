@@ -24,8 +24,13 @@ const serializeThreadPayload = (payload: ThreadCreatePayload | ThreadReplyPayloa
 
   formData.set('body', payload.body);
 
-  appendArrayValues(formData, 'categoryIds', payload.categoryIds);
-  appendArrayValues(formData, 'tags', payload.tags);
+  if (payload.categoryIds && payload.categoryIds.length > 0) {
+    payload.categoryIds.forEach((id) => formData.append('categoryIds', id));
+  }
+
+  if (payload.tags && payload.tags.length > 0) {
+    payload.tags.forEach((tag) => formData.append('tags', tag));
+  }
 
   if (payload.image instanceof File) {
     formData.set('image', payload.image);

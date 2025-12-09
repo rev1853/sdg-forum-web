@@ -20,6 +20,8 @@ const ProfilePage = () => {
   const [previewUrl, setPreviewUrl] = useState(() => resolveProfileImageUrl(user, baseUrl));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState({ type: null, message: '' });
+  const [userThreads, setUserThreads] = useState([]);
+  const [isLoadingThreads, setIsLoadingThreads] = useState(false);
 
   const originalValues = useMemo(
     () => ({
@@ -30,6 +32,32 @@ const ProfilePage = () => {
     }),
     [user, baseUrl],
   );
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    let cancelled = false;
+    const loadUserThreads = async () => {
+      setIsLoadingThreads(true);
+      try {
+        const response = await users.listThreads(user.id);
+        if (cancelled) return;
+        const data = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.threads)
+            ? response.threads
+            : [];
+        setUserThreads(data);
+      } catch (err) {
+        console.error('Failed to load user threads', err);
+      } finally {
+        if (!cancelled) setIsLoadingThreads(false);
+      }
+    };
+
+    loadUserThreads();
+    return () => { cancelled = true; };
+  }, [users, user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -315,38 +343,82 @@ const ProfilePage = () => {
             </div>
           </form>
 
-          <aside className="profile-preview">
-            <div className="profile-preview__card">
-              <div className="profile-preview__header">
-                <span className="preview-label">Live Preview</span>
+          <div className="profile-history mt-8">
+            <h2 className="text-xl font-bold mb-4">Your Thread History</h2>
+            {isLoadingThreads ? (
+              <div className="animate-pulse space-y-4">
+                <div className="h-16 bg-gray-800/50 rounded-lg w-full"></div>
+                <div className="h-16 bg-gray-800/50 rounded-lg w-full"></div>
+                <div className="h-16 bg-gray-800/50 rounded-lg w-full"></div>
               </div>
-              <div className="profile-preview__content">
-                <div className="profile-preview__avatar">
-                  {previewImage ? (
-                    <img src={previewImage} alt="Profile preview" />
-                  ) : (
-                    <span>{user?.name?.[0]?.toUpperCase() ?? 'U'}</span>
-                  )}
-                </div>
-                <div className="profile-preview__info">
-                  <h3 className="profile-preview__name">{formState.name || 'Your name here'}</h3>
-                  <p className="profile-preview__handle">@{formState.username || 'username'}</p>
-                </div>
+            ) : userThreads.length > 0 ? (
+              <div className="space-y-4">
+                {userThreads.map(thread => (
+                  <Link to={`/forum/threads/${thread.id}`} key={thread.id} className="block p-4 bg-white/5 rounded-lg hover:bg-white/10 transition-colors border border-white/5">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-medium text-lg text-white mb-1">{thread.title}</h3>
+                        <p className="text-sm text-gray-400 line-clamp-2">{thread.summary || thread.body}</p>
+                      </div>
+                      <span className="text-xs text-gray-500 whitespace-nowrap ml-4">
+                        {new Date(thread.created_at || thread.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
+                      {thread.category && (
+                        <span className="bg-white/10 px-2 py-1 rounded text-[var(--color-accent-secondary)]">
+                          {thread.category.name}
+                        </span>
+                      )}
+                      <span>{thread.counts?.likes || 0} Likes</span>
+                      <span>{thread.counts?.replies || 0} Replies</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-white/5 rounded-lg border border-white/5 border-dashed">
+                <p className="text-gray-400 mb-4">You haven't posted any threads yet.</p>
+                <Link to="/forum/create" className="primary-button inline-flex">
+                  Start your first thread
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
 
-                <div className="profile-preview__stats">
-                  <div className="stat-item">
-                    <span className="stat-value">{user?._count?.threads ?? '0'}</span>
-                    <span className="stat-label">Threads</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-value">{user?._count?.interactions ?? '0'}</span>
-                    <span className="stat-label">Interactions</span>
-                  </div>
+        <aside className="profile-preview">
+          {/* ... (keep existing preview card) ... */}
+          <div className="profile-preview__card">
+            <div className="profile-preview__header">
+              <span className="preview-label">Live Preview</span>
+            </div>
+            <div className="profile-preview__content">
+              <div className="profile-preview__avatar">
+                {previewImage ? (
+                  <img src={previewImage} alt="Profile preview" />
+                ) : (
+                  <span>{user?.name?.[0]?.toUpperCase() ?? 'U'}</span>
+                )}
+              </div>
+              <div className="profile-preview__info">
+                <h3 className="profile-preview__name">{formState.name || 'Your name here'}</h3>
+                <p className="profile-preview__handle">@{formState.username || 'username'}</p>
+              </div>
+
+              <div className="profile-preview__stats">
+                <div className="stat-item">
+                  <span className="stat-value">{user?._count?.threads ?? userThreads.length ?? '0'}</span>
+                  <span className="stat-label">Threads</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-value">{user?._count?.interactions ?? '0'}</span>
+                  <span className="stat-label">Interactions</span>
                 </div>
               </div>
             </div>
-          </aside>
-        </div>
+          </div>
+        </aside>
       </div>
     </section>
   );
