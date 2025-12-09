@@ -92,20 +92,20 @@ export const createThreadsService = (client: ApiClient): ThreadsService => ({
       path: '/threads',
       method: 'GET',
       query: normalizeQuery(query),
-      requiresAuth: true,
+      requiresAuth: false,
     }),
   getThread: (threadId) =>
     client.request<ThreadDetail | void>({
       path: `/threads/${encodeURIComponent(threadId)}`,
       method: 'GET',
-      requiresAuth: true,
+      requiresAuth: false,
     }),
   listReplies: (threadId, query) =>
     client.request<ThreadRepliesResponse | void>({
       path: `/threads/${encodeURIComponent(threadId)}/replies`,
       method: 'GET',
       query: normalizeQuery(query),
-      requiresAuth: true,
+      requiresAuth: false,
     }),
   createReply: (threadId, payload) =>
     client.request<ThreadDetail | void>({

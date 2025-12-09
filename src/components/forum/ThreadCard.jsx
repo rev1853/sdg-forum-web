@@ -226,9 +226,9 @@ const ThreadCard = ({ thread }) => {
 
             <div className="thread-card__content">
                 <div className="thread-card__meta">
-                    {thread.category && (
+                    {(thread.categories?.[0] || thread.category) && (
                         <span className="thread-card__goal">
-                            {thread.category.name || `Goal ${thread.category.sdg_number}`}
+                            {(thread.categories?.[0] || thread.category).name || `Goal ${(thread.categories?.[0] || thread.category).sdg_number}`}
                         </span>
                     )}
                 </div>

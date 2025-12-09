@@ -65,7 +65,7 @@ const ForumThreadsPage = () => {
 
         setUserThreads(data);
       } catch (err) {
-        console.error('Failed to load user threads', err);
+        // console.error('Failed to load user threads', err);
       } finally {
         if (!cancelled) setIsLoadingUserThreads(false);
       }
