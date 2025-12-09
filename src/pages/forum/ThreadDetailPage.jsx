@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { FiArrowLeft, FiHeart, FiMessageSquare, FiRepeat, FiShare2, FiFlag } from 'react-icons/fi';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { FiArrowLeft, FiHeart, FiMessageSquare, FiRepeat, FiShare2, FiFlag, FiTrash2, FiEdit2 } from 'react-icons/fi';
 import ForumNavbar from '../../components/forum/ForumNavbar';
+import EditThreadModal from '../../components/forum/EditThreadModal';
 import { useApi } from '../../api';
 import { useAuth } from '@/context/AuthContext';
 import { resolveProfileImageUrl, resolveThreadImage } from '@utils/media';
@@ -121,6 +122,7 @@ const ThreadDetailSkeleton = () => (
 
 const ThreadDetailPage = () => {
   const { threadId } = useParams();
+  const navigate = useNavigate();
   const { user, token } = useAuth();
   const { threads, baseUrl } = useApi();
   const [thread, setThread] = useState(null);
@@ -137,9 +139,11 @@ const ThreadDetailPage = () => {
   const [isProcessingLike, setIsProcessingLike] = useState(false);
   const [isProcessingRepost, setIsProcessingRepost] = useState(false);
   const [isProcessingReport, setIsProcessingReport] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [interactionFeedback, setInteractionFeedback] = useState({ type: null, message: '' });
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [reportReason, setReportReason] = useState('spam');
   const [reportNotes, setReportNotes] = useState('');
   const reportDialogRef = useRef(null);
@@ -367,6 +371,30 @@ const ThreadDetailPage = () => {
     setIsReportModalOpen(true);
   }, [ensureSignedIn, threadId, REPORT_REASONS]);
 
+  const handleDeleteThread = useCallback(async () => {
+    if (!threadId) return;
+    if (!window.confirm('Are you sure you want to delete this thread? This action cannot be undone.')) return;
+
+    try {
+      setIsDeleting(true);
+      await threads.deleteThread(threadId);
+      navigate('/forum/threads');
+    } catch (error) {
+      console.error('Failed to delete thread', error);
+      const message = error?.message || 'Unable to delete this thread right now.';
+      setInteractionFeedback({ type: 'error', message });
+      setIsDeleting(false);
+    }
+  }, [threadId, threads, navigate]);
+
+  const handleThreadUpdate = (updatedThread) => {
+    setThread((prev) => ({
+      ...prev,
+      ...updatedThread,
+    }));
+    setInteractionFeedback({ type: 'success', message: 'Thread updated successfully.' });
+  };
+
   useEffect(() => {
     if (!isReportModalOpen) return;
     const dialog = reportDialogRef.current;
@@ -393,7 +421,10 @@ const ThreadDetailPage = () => {
   );
   const postedAt = formatDateTime(thread?.created_at ?? thread?.createdAt);
   const categories = Array.isArray(thread?.categories) ? thread.categories : [];
+
   const tags = Array.isArray(thread?.tags) ? thread.tags.filter(Boolean) : [];
+
+  const isOwner = user?.id && thread?.author_id && String(user.id) === String(thread.author_id);
 
   const handleReplySubmit = async (event) => {
     event.preventDefault();
@@ -557,12 +588,33 @@ const ThreadDetailPage = () => {
                 <FiMessageSquare size={18} />
                 {counts.replies} Replies
               </button>
-              <button className="thread-action-button ml-auto" onClick={handleShareThread}>
+              <button className="thread-action-button" onClick={handleShareThread}>
                 <FiShare2 size={18} /> Share
               </button>
+
+              <div className="action-separator ml-auto"></div>
+
               <button className="thread-action-button text-red-400 hover:text-red-300 hover:bg-red-500/10 border-red-500/20" onClick={() => setIsReportModalOpen(true)}>
                 <FiFlag size={18} /> Report
               </button>
+
+              {isOwner && (
+                <>
+                  <button
+                    className="thread-action-button text-[var(--color-text-secondary)] hover:text-white hover:bg-white/10 border-white/20 ml-2"
+                    onClick={() => setIsEditModalOpen(true)}
+                  >
+                    <FiEdit2 size={18} /> Edit
+                  </button>
+                  <button
+                    className="thread-action-button text-red-400 hover:text-red-300 hover:bg-red-500/10 border-red-500/20 ml-2"
+                    onClick={handleDeleteThread}
+                    disabled={isDeleting}
+                  >
+                    <FiTrash2 size={18} /> {isDeleting ? 'Deleting...' : 'Delete'}
+                  </button>
+                </>
+              )}
             </footer>
           </article>
 
@@ -697,6 +749,13 @@ const ThreadDetailPage = () => {
           </div>
         </div>
       ) : null}
+
+      <EditThreadModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        thread={thread}
+        onUpdate={handleThreadUpdate}
+      />
     </>
   );
 };

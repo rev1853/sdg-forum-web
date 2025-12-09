@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiType, FiAlignLeft, FiImage, FiTag, FiLayers, FiCheck, FiChevronDown, FiX } from 'react-icons/fi';
+import { FiType, FiAlignLeft, FiImage, FiTag, FiLayers, FiCheck, FiChevronDown, FiX, FiInfo, FiUploadCloud, FiTrash2 } from 'react-icons/fi';
 import ForumNavbar from '../../components/forum/ForumNavbar';
 import { useApi } from '../../api';
 import { useAuth } from '@/context/AuthContext';
@@ -9,28 +9,28 @@ const CreateThreadPage = () => {
   const { token } = useAuth();
   const { threads, categories: categoriesApi } = useApi();
   const navigate = useNavigate();
+
+  // Form State
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [selectedCategories, setSelectedCategories] = useState([]);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
   const [tags, setTags] = useState('');
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+
+  // UI State
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Data State
   const [categories, setCategories] = useState([]);
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -72,7 +72,39 @@ const CreateThreadPage = () => {
   }, [image]);
 
   const handleImageChange = (event) => {
-    setImage(event.target.files?.[0] ?? null);
+    const file = event.target.files?.[0];
+    if (file) setImage(file);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      setImage(file);
+    }
+  };
+
+  const handleRemoveImage = (e) => {
+    e.stopPropagation();
+    setImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
   };
 
   const handleCategoryToggle = (id) => {
@@ -112,7 +144,6 @@ const CreateThreadPage = () => {
       return;
     }
 
-    // Filter out any undefined/null values just in case
     const validCategoryIds = selectedCategories.filter(Boolean);
 
     if (validCategoryIds.length === 0) {
@@ -172,12 +203,12 @@ const CreateThreadPage = () => {
     }
   };
 
-  const previewTitle = title.trim() || 'Thread title';
-  const previewBody = (body || 'Use this space to share the context, what you tried, and what you need next.')
+  const previewTitle = title.trim() || 'Your Thread Title';
+  const previewBody = (body || 'This is where your content preview will appear. Start typing to see how your post will look to others.')
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .slice(0, 2)
+    .slice(0, 3)
     .join(' ');
   const previewTags = tagValues.slice(0, 4);
 
@@ -185,56 +216,68 @@ const CreateThreadPage = () => {
     <>
       <ForumNavbar />
       <main className="forum-layout">
-        <section className="form-hero">
-          <span className="form-hero__eyebrow">Start a conversation</span>
-          <h1>Share a field update with the community</h1>
-          <p>Thread posts help practitioners learn from each other. Tell the story, include data points, and ask for what you need.</p>
-        </section>
+        <header className="create-thread-header">
+          <div className="create-thread-header__content">
+            <span className="create-thread-header__eyebrow">Start a conversation</span>
+            <h1>Create New Thread</h1>
+            <p>Share your insights, ask questions, or discuss SDG goals with the community.</p>
+          </div>
+        </header>
 
         <div className="create-thread">
           <form className="create-thread__form" onSubmit={handleSubmit}>
-            {error && <div className="form-feedback form-feedback--error">{error}</div>}
-            {loadError && <div className="form-feedback form-feedback--warning">{loadError}</div>}
+            {error && (
+              <div className="form-feedback form-feedback--error">
+                <FiInfo /> {error}
+              </div>
+            )}
+            {loadError && (
+              <div className="form-feedback form-feedback--warning">
+                <FiInfo /> {loadError}
+              </div>
+            )}
 
-            <div className="form-field">
-              <label htmlFor="title">
-                <FiType className="form-icon" /> Thread title
-              </label>
-              <p className="form-field__hint">Summarize the essence of your update in one punchy sentence.</p>
-              <input
-                id="title"
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Rainwater harvesting pilot doubled collection rates"
-                required
-              />
-            </div>
+            <div className="form-section">
+              <div className="form-field">
+                <label htmlFor="title">
+                  <FiType className="form-icon" /> Title
+                </label>
+                <input
+                  id="title"
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="What's on your mind?"
+                  className="form-input--large"
+                  required
+                />
+              </div>
 
-            <div className="form-field">
-              <label htmlFor="body">
-                <FiAlignLeft className="form-icon" /> What happened?
-              </label>
-              <p className="form-field__hint">
-                Include what you tried, what surprised you, and how others can support next steps. Markdown and line breaks are supported.
-              </p>
-              <textarea
-                id="body"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                rows={10}
-                placeholder="Set the scene, share your learning, and link to evidence or media."
-                required
-              />
+              <div className="form-field">
+                <label htmlFor="body">
+                  <FiAlignLeft className="form-icon" /> Content
+                </label>
+                <div className="textarea-wrapper">
+                  <textarea
+                    id="body"
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    rows={12}
+                    placeholder="Share your thoughts... (Markdown supported)"
+                    required
+                  />
+                  <div className="textarea-footer">
+                    <span>Markdown supported</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="form-grid">
               <div className="form-field" ref={dropdownRef}>
                 <label>
-                  <FiLayers className="form-icon" /> Goal focus
+                  <FiLayers className="form-icon" /> Related Goals
                 </label>
-                <p className="form-field__hint">Pick up to 3 primary SDG focuses.</p>
-
                 <div
                   className={`custom-select ${isDropdownOpen ? 'is-open' : ''}`}
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -256,7 +299,7 @@ const CreateThreadPage = () => {
                         ))}
                       </div>
                     ) : (
-                      <span className="placeholder">Select categories...</span>
+                      <span className="placeholder">Select up to 3 goals...</span>
                     )}
                     <FiChevronDown className="chevron" />
                   </div>
@@ -285,31 +328,37 @@ const CreateThreadPage = () => {
                     </div>
                   )}
                 </div>
+                <p className="form-field__hint">Select the SDG goals this thread relates to.</p>
               </div>
 
               <div className="form-field">
                 <label htmlFor="tags">
                   <FiTag className="form-icon" /> Tags
                 </label>
-                <p className="form-field__hint">Use up to five labels so others can find your update.</p>
                 <input
                   id="tags"
                   type="text"
                   value={tags}
                   onChange={(e) => setTags(e.target.value)}
-                  placeholder="water, co-design, pilot"
+                  placeholder="e.g. climate, innovation, policy (comma separated)"
                 />
+                <p className="form-field__hint">Add keywords to help others find your thread.</p>
               </div>
             </div>
 
             <div className="form-field">
               <label>
-                <FiImage className="form-icon" /> Cover image
+                <FiImage className="form-icon" /> Cover Image
               </label>
-              <p className="form-field__hint">Optional: upload a hero image or infographic (max 5&nbsp;MB).</p>
-
-              <div className="file-upload-wrapper">
+              <div
+                className={`file-upload-wrapper ${isDragging ? 'is-dragging' : ''} ${image ? 'has-file' : ''}`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={triggerFileInput}
+              >
                 <input
+                  ref={fileInputRef}
                   id="image"
                   type="file"
                   accept="image/*"
@@ -317,51 +366,91 @@ const CreateThreadPage = () => {
                   className="file-upload-input"
                 />
                 <div className="file-upload-control">
-                  <FiImage size={24} />
-                  <span>{image ? image.name : 'Click to upload or drag and drop'}</span>
+                  {imagePreview ? (
+                    <div className="file-preview">
+                      <img src={imagePreview} alt="Preview" />
+                      <button
+                        type="button"
+                        className="remove-image-btn"
+                        onClick={handleRemoveImage}
+                        title="Remove image"
+                      >
+                        <FiTrash2 />
+                      </button>
+                      <div className="file-preview__overlay">
+                        <FiUploadCloud size={24} />
+                        <span>Change Image</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="file-placeholder">
+                      <div className="icon-circle">
+                        <FiUploadCloud size={24} />
+                      </div>
+                      <span className="primary-text">Click to upload or drag and drop</span>
+                      <span className="secondary-text">SVG, PNG, JPG or GIF (max. 5MB)</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
             <div className="form-actions">
               <button type="submit" className="primary-button" disabled={isSubmitting}>
-                {isSubmitting ? 'Submitting…' : 'Publish thread'}
+                {isSubmitting ? 'Publishing...' : 'Publish Thread'}
               </button>
-              <p className="form-actions__hint">
-                Threads are public and can be edited later from your profile.
-              </p>
             </div>
           </form>
 
           <aside className="create-thread__sidebar">
-            <div className="preview-card">
-              <header className="preview-card__header">
-                <span className="preview-card__badge">{selectedCategoryObjects[0]?.name ?? 'Goal TBD'}</span>
-                <h3>{previewTitle}</h3>
-                <p>{previewBody}</p>
-              </header>
-              {imagePreview && (
-                <div className="preview-card__media">
-                  <img src={imagePreview} alt="" />
-                </div>
-              )}
-              {previewTags.length > 0 && (
-                <footer className="preview-card__tags">
-                  {previewTags.map((tag) => (
-                    <span key={tag}>#{tag}</span>
-                  ))}
-                </footer>
-              )}
-            </div>
+            <div className="sidebar-sticky">
+              <div className="preview-label">Live Preview</div>
+              <div className="thread-card preview-card">
+                {imagePreview && (
+                  <div className="thread-card__media">
+                    <img src={imagePreview} alt="" />
+                  </div>
+                )}
+                <div className="thread-card__content">
+                  <div className="thread-card__meta">
+                    <span className="thread-card__goal">
+                      {selectedCategoryObjects[0]?.name ?? 'Goal'}
+                    </span>
+                    <span className="thread-card__date">Just now</span>
+                  </div>
 
-            <div className="create-thread__tips">
-              <h4>Tips for a standout thread</h4>
-              <ul>
-                <li>Share the challenge, what you tested, and the outcome.</li>
-                <li>Link to reports, dashboards, or media where possible.</li>
-                <li>End with a clear ask—feedback, partners, or resources.</li>
-                <li>Mention collaborators to give credit and invite them in.</li>
-              </ul>
+                  <h3 className="thread-card__title">{previewTitle}</h3>
+                  <p className="thread-card__snippet">{previewBody}</p>
+
+                  {previewTags.length > 0 && (
+                    <div className="thread-card__tags">
+                      {previewTags.map((tag) => (
+                        <span key={tag} className="thread-tag">#{tag}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="thread-card__footer">
+                    <div className="thread-card__author">
+                      <div className="thread-card__author-avatar" style={{ background: 'var(--color-accent-primary)' }}></div>
+                      <div className="thread-card__author-meta">
+                        <span>You</span>
+                        <small>Author</small>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="create-thread__tips">
+                <h4><FiInfo /> Posting Tips</h4>
+                <ul>
+                  <li><strong>Be specific:</strong> Clear titles help people find your topic.</li>
+                  <li><strong>Add context:</strong> Explain why this matters to the SDG goals.</li>
+                  <li><strong>Use tags:</strong> Relevant tags increase visibility.</li>
+                  <li><strong>Be respectful:</strong> Keep the discussion constructive.</li>
+                </ul>
+              </div>
             </div>
           </aside>
         </div>

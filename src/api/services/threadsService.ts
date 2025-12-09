@@ -72,6 +72,8 @@ const normalizeQuery = (query?: ThreadListQuery) => {
 
 export interface ThreadsService {
   createThread(payload: ThreadCreatePayload): Promise<ThreadDetail | void>;
+  deleteThread(threadId: string): Promise<void>;
+  updateThread(threadId: string, payload: ThreadCreatePayload): Promise<ThreadDetail | void>;
   listThreads(query?: ThreadListQuery): Promise<ThreadListResponse | void>;
   getThread(threadId: string): Promise<ThreadDetail | void>;
   listReplies(threadId: string, query?: ThreadListQuery): Promise<ThreadRepliesResponse | void>;
@@ -89,6 +91,19 @@ export const createThreadsService = (client: ApiClient): ThreadsService => ({
     client.request<ThreadDetail | void>({
       path: '/threads',
       method: 'POST',
+      body: serializeThreadPayload(payload),
+      requiresAuth: true,
+    }),
+  deleteThread: (threadId) =>
+    client.request<void>({
+      path: `/threads/${encodeURIComponent(threadId)}`,
+      method: 'DELETE',
+      requiresAuth: true,
+    }),
+  updateThread: (threadId, payload) =>
+    client.request<ThreadDetail | void>({
+      path: `/threads/${encodeURIComponent(threadId)}`,
+      method: 'PUT',
       body: serializeThreadPayload(payload),
       requiresAuth: true,
     }),

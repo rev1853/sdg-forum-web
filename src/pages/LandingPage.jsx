@@ -23,7 +23,7 @@ const LandingPage = () => {
 
   return (
     <section className="landing-wrapper">
-      <title>SDG Forum - Animated UI Components For React</title>
+      <title>SDG Forum</title>
 
       <Announcement />
 
