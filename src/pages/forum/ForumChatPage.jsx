@@ -1,56 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FiSend, FiPlus, FiRefreshCw } from 'react-icons/fi';
+import { FiSend } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import ForumNavbar from '../../components/forum/ForumNavbar';
 import { useApi } from '@/api';
 import { useAuth } from '@/context/AuthContext';
 import useChatSocket from '@/hooks/useChatSocket';
 import { resolveProfileImageUrl } from '@utils/media';
+import sdgGoals from '@/data/sdgGoals';
 
-const MESSAGE_LIMIT = 500;
+const MESSAGE_LIMIT = 2000;
 
-const FALLBACK_ROOMS = [
-  {
-    id: 'global',
-    name: 'Global announcements',
-    description: 'Platform updates and community-wide news.',
-    isFallback: true,
-    messages: [
-      {
-        id: 'global-1',
-        author: 'Moderator',
-        content: 'Welcome to the live chat! Share quick updates and link to your threads for deeper dives.',
-        timestamp: '08:24',
-      },
-      {
-        id: 'global-2',
-        author: 'Zahra',
-        content: 'We just published a new guide for inclusive co-design workshops. Feedback welcome.',
-        timestamp: '08:27',
-      },
-    ],
-  },
-  {
-    id: 'goal-6',
-    name: 'SDG 6 • Clean Water',
-    description: 'Water purification, sanitation systems, watershed protection.',
-    isFallback: true,
-    messages: [
-      {
-        id: 'goal-6-1',
-        author: 'Abena',
-        content: 'We have spare capacity on our filtration units. DM if your community needs a shipment.',
-        timestamp: '09:10',
-      },
-      {
-        id: 'goal-6-2',
-        author: 'Elisa',
-        content: 'Does anyone have sample policies for community-led maintenance funding?',
-        timestamp: '09:22',
-      },
-    ],
-  },
-];
+const STATIC_ROOMS = sdgGoals.map((goal) => ({
+  id: `sdg-group-${goal.number}`,
+  name: `SDG ${goal.number}: ${goal.title}`,
+  description: goal.description,
+  sdgNumber: goal.number,
+  isStatic: true,
+}));
 
 const formatTime = (value) => {
   if (!value) return '';
@@ -70,6 +36,31 @@ const getInitials = (value) => {
   return `${tokens[0]}${tokens[tokens.length - 1]}`.toUpperCase();
 };
 
+const extractSdgNumber = (room) => {
+  const categoryNumber = room?.categories
+    ?.map((entry) => entry?.category?.sdg_number ?? entry?.category?.sdgNumber)
+    ?.find((value) => Number.isInteger(Number(value)));
+  if (categoryNumber !== undefined) {
+    const parsed = Number(categoryNumber);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+
+  if (room?.sdgNumber && Number.isInteger(Number(room.sdgNumber))) {
+    const parsed = Number(room.sdgNumber);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+
+  const parseFromString = (value) => {
+    if (typeof value !== 'string') return null;
+    const match = value.match(/(\d+)/);
+    if (!match) return null;
+    const parsed = Number(match[1]);
+    return Number.isNaN(parsed) ? null : parsed;
+  };
+
+  return parseFromString(room?.id) ?? parseFromString(room?.name);
+};
+
 const normalizeRoom = (room) => {
   if (!room) return null;
   return {
@@ -81,7 +72,35 @@ const normalizeRoom = (room) => {
         : room.categories && room.categories.length > 0
           ? `Focus: ${room.categories.map((entry) => entry?.category?.name).filter(Boolean).join(', ')}`
           : 'Live conversation with the community.',
+    sdgNumber: extractSdgNumber(room),
+    isStatic: room.isStatic ?? false,
   };
+};
+
+const sortRooms = (list = []) =>
+  [...list].sort((a, b) => {
+    const aNumber = a?.sdgNumber ?? Number.MAX_SAFE_INTEGER;
+    const bNumber = b?.sdgNumber ?? Number.MAX_SAFE_INTEGER;
+    if (aNumber !== bNumber) return aNumber - bNumber;
+    return (a?.name ?? '').localeCompare(b?.name ?? '');
+  });
+
+const mergeRooms = (apiRooms = [], fallbackRooms = []) => {
+  const map = new Map();
+
+  apiRooms.forEach((room) => {
+    if (room?.id) {
+      map.set(room.id, room);
+    }
+  });
+
+  fallbackRooms.forEach((room) => {
+    if (room?.id && !map.has(room.id)) {
+      map.set(room.id, room);
+    }
+  });
+
+  return sortRooms([...map.values()]);
 };
 
 const normalizeMessage = (message, baseUrl) => {
@@ -104,6 +123,31 @@ const normalizeMessage = (message, baseUrl) => {
 
   const timestampValue =
     raw.created_at ?? raw.createdAt ?? raw.sent_at ?? raw.sentAt ?? raw.timestamp ?? new Date().toISOString();
+  const replySource = raw.reply_to ?? raw.replyTo ?? null;
+  const replyPreview = replySource
+    ? {
+        id:
+          replySource.id ??
+          replySource.message_id ??
+          replySource.messageId ??
+          replySource.original_id ??
+          null,
+        author:
+          replySource.user?.name ??
+          replySource.user?.username ??
+          replySource.author?.name ??
+          replySource.author?.username ??
+          replySource.user ??
+          replySource.author ??
+          null,
+        body: typeof replySource.body === 'string' && replySource.body.trim().length > 0
+          ? replySource.body.trim()
+          : typeof replySource.content === 'string' && replySource.content.trim().length > 0
+            ? replySource.content.trim()
+            : null,
+      }
+    : null;
+  const hasReplyContext = replyPreview && (replyPreview.body || replyPreview.author);
 
   return {
     id:
@@ -111,7 +155,7 @@ const normalizeMessage = (message, baseUrl) => {
       raw.messageId ??
       raw.message_id ??
       `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    groupId: raw.groupId ?? raw.group_id ?? null,
+    groupId: raw.groupId ?? raw.group_id ?? raw.group?.id ?? null,
     author: authorName,
     authorId:
       raw.sender_id ??
@@ -121,6 +165,7 @@ const normalizeMessage = (message, baseUrl) => {
       raw.user_id ??
       raw.userId ??
       null,
+    replyTo: hasReplyContext ? replyPreview : null,
     content: trimmed,
     timestamp: formatTime(timestampValue),
     initials: getInitials(authorName),
@@ -138,14 +183,18 @@ const ForumChatPage = () => {
   const [messages, setMessages] = useState([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [joinedRoomId, setJoinedRoomId] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [draft, setDraft] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState('');
+  const [isLiveApiReady, setIsLiveApiReady] = useState(true);
 
   const streamRef = useRef(null);
   const composerRef = useRef(null);
+  const staticRooms = useMemo(
+    () => sortRooms(STATIC_ROOMS.map((room) => normalizeRoom(room)).filter((room) => room && room.id)),
+    [],
+  );
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -155,8 +204,9 @@ const ForumChatPage = () => {
     let cancelled = false;
 
     if (!supportsLiveChat) {
-      setRooms(FALLBACK_ROOMS);
-      setActiveRoomId((current) => current ?? FALLBACK_ROOMS[0]?.id ?? null);
+      setRooms(staticRooms);
+      setActiveRoomId((current) => current ?? staticRooms[0]?.id ?? null);
+      setIsLiveApiReady(false);
       setStatusMessage('Live rooms preview is shown because the chat API is unavailable.');
       setIsLoadingRooms(false);
       return undefined;
@@ -164,33 +214,36 @@ const ForumChatPage = () => {
 
     const loadRooms = async () => {
       setIsLoadingRooms(true);
+      setStatusMessage('');
+      setIsLiveApiReady(true);
       try {
-        const response = await chat.listGroups({ pageSize: 50 });
+        const response = await chat.listGroups({ pageSize: 25 });
         if (cancelled) return;
 
-        const mappedRooms = (Array.isArray(response?.data) ? response.data : [])
+        const normalizedRooms = (Array.isArray(response?.data) ? response.data : [])
           .map(normalizeRoom)
           .filter((room) => room && room.id);
 
-        if (mappedRooms.length > 0) {
-          setRooms(mappedRooms);
-          setActiveRoomId((current) => {
-            if (current && mappedRooms.some((room) => room.id === current)) {
-              return current;
-            }
-            return mappedRooms[0].id;
-          });
-          return;
-        }
+        const resolvedRooms = mergeRooms(normalizedRooms, staticRooms);
+        setRooms(resolvedRooms);
+        setIsLiveApiReady(true);
+        setActiveRoomId((current) => {
+          if (current && resolvedRooms.some((room) => room.id === current)) {
+            return current;
+          }
+          return resolvedRooms[0]?.id ?? null;
+        });
 
-        setRooms(FALLBACK_ROOMS);
-        setActiveRoomId(FALLBACK_ROOMS[0]?.id ?? null);
+        if (normalizedRooms.length === 0) {
+          setStatusMessage('Showing default SDG rooms because the live chat API did not return groups.');
+        }
       } catch (error) {
         if (!cancelled) {
           console.error('Failed to load chat rooms', error);
-          setRooms(FALLBACK_ROOMS);
-          setActiveRoomId(FALLBACK_ROOMS[0]?.id ?? null);
-          setStatusMessage('Unable to load live rooms. Showing a preview instead.');
+          setRooms(staticRooms);
+          setIsLiveApiReady(false);
+          setActiveRoomId(staticRooms[0]?.id ?? null);
+          setStatusMessage('Unable to load live rooms. Showing SDG groups instead.');
         }
       } finally {
         if (!cancelled) {
@@ -203,7 +256,7 @@ const ForumChatPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [chat, supportsLiveChat]);
+  }, [chat, supportsLiveChat, staticRooms]);
 
   const {
     status: socketStatus,
@@ -216,15 +269,16 @@ const ForumChatPage = () => {
   } = useChatSocket({
     baseUrl,
     token,
-    enabled: Boolean(token && supportsLiveChat),
+    enabled: Boolean(token && supportsLiveChat && isLiveApiReady),
     onMessage: (payload) => {
       const mapped = normalizeMessage(payload, baseUrl);
       if (!mapped || !mapped.groupId) return;
       setMessages((current) => {
-        if (mapped.groupId !== activeRoomId) {
+        const incomingGroupId = String(mapped.groupId);
+        if (!activeRoomId || incomingGroupId !== String(activeRoomId)) {
           return current;
         }
-        return [...current, mapped];
+        return [...current, mapped].sort((a, b) => String(a.id).localeCompare(String(b.id)));
       });
     },
     onMessageRemoved: (payload) => {
@@ -240,41 +294,17 @@ const ForumChatPage = () => {
       return;
     }
 
-    const activeRoom = rooms.find((room) => room.id === activeRoomId);
-    const isFallbackRoom = activeRoom?.isFallback;
+    setMessages([]);
 
-    if (!supportsLiveChat || isFallbackRoom) {
-      const fallbackRoom = isFallbackRoom ? activeRoom : FALLBACK_ROOMS.find((room) => room.id === activeRoomId);
-      const fallbackMessages = fallbackRoom
-        ? (fallbackRoom.messages || []).map((message) => ({
-          ...message,
-          groupId: fallbackRoom.id,
-          initials: getInitials(message.author),
-          avatar: null,
-        }))
-        : [];
-      setMessages(fallbackMessages);
-      setStatusMessage(
-        isFallbackRoom
-          ? 'This is a preview room. Messages here are not saved.'
-          : 'Live chat API is unavailable. Showing a preview instead.'
-      );
+    if (!supportsLiveChat || !isLiveApiReady) {
+      setStatusMessage('Live chat API is unavailable. Showing SDG rooms only.');
       setIsLoadingMessages(false);
       return;
     }
 
     if (!token) {
-      const fallbackRoom = FALLBACK_ROOMS.find((room) => room.id === activeRoomId);
-      const fallbackMessages = fallbackRoom
-        ? fallbackRoom.messages.map((message) => ({
-          ...message,
-          groupId: fallbackRoom.id,
-          initials: getInitials(message.author),
-          avatar: null,
-        }))
-        : [];
-      setMessages(fallbackMessages);
-      setStatusMessage('Sign in to join the live conversation. Showing a preview instead.');
+      setStatusMessage('Sign in to view messages and chat with the community.');
+      setIsLoadingMessages(false);
       return;
     }
 
@@ -283,17 +313,7 @@ const ForumChatPage = () => {
     const loadMessages = async () => {
       setIsLoadingMessages(true);
       setStatusMessage('');
-      setJoinedRoomId(null); // Reset join status
       try {
-        // Attempt to join via REST API first
-        try {
-          await chat.joinGroup(activeRoomId);
-        } catch (err) {
-          // Ignore "already member" errors, but log others
-          console.warn('REST joinGroup warning:', err);
-        }
-        setJoinedRoomId(activeRoomId); // Mark as ready for socket connection
-
         const response = await chat.listMessages(activeRoomId, { limit: 50 });
         if (cancelled) return;
 
@@ -301,8 +321,13 @@ const ForumChatPage = () => {
           ? response.messages
           : Array.isArray(response?.data)
             ? response.data
-            : [];
-        const normalized = rawMessages.map((entry) => normalizeMessage(entry, baseUrl)).filter(Boolean);
+            : Array.isArray(response?.items)
+              ? response.items
+              : [];
+        const normalized = rawMessages
+          .map((entry) => normalizeMessage(entry, baseUrl))
+          .filter(Boolean)
+          .sort((a, b) => String(a.id).localeCompare(String(b.id)));
         setMessages(normalized);
       } catch (error) {
         if (!cancelled) {
@@ -321,15 +346,11 @@ const ForumChatPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeRoomId, chat, supportsLiveChat, token, rooms]);
+  }, [activeRoomId, chat, supportsLiveChat, token, baseUrl, isLiveApiReady]);
 
   useEffect(() => {
     if (!supportsLiveChat || !activeRoomId || !token) return undefined;
-
-    const activeRoom = rooms.find((room) => room.id === activeRoomId);
-    if (activeRoom?.isFallback) return undefined;
-
-    if (!isConnected || joinedRoomId !== activeRoomId) return undefined; // Wait for REST join for THIS room
+    if (!isConnected) return undefined;
 
     let isMounted = true;
 
@@ -352,9 +373,8 @@ const ForumChatPage = () => {
     return () => {
       isMounted = false;
       leaveSocketGroup(activeRoomId).catch(() => undefined);
-      // We do NOT call chat.leaveGroup here to avoid thrashing REST membership when switching views
     };
-  }, [activeRoomId, chat, joinSocketGroup, leaveSocketGroup, supportsLiveChat, token, isConnected, joinedRoomId, rooms]);
+  }, [activeRoomId, joinSocketGroup, leaveSocketGroup, supportsLiveChat, token, isConnected]);
 
   // Expose socket error to UI
   useEffect(() => {
@@ -380,24 +400,20 @@ const ForumChatPage = () => {
   }, [draft, activeRoomId]);
 
   const connectionLabel = useMemo(() => {
-    if (!token) return 'Preview';
-
-    const activeRoom = rooms.find((room) => room.id === activeRoomId);
-    if (activeRoom?.isFallback) return 'Preview';
+    if (!token || !isLiveApiReady) return 'Preview';
 
     if (socketStatus === 'connected') return 'Live now';
     if (socketStatus === 'connecting') return 'Connecting…';
     if (socketStatus === 'error') return 'Offline';
     if (socketStatus === 'disconnected') return 'Offline';
     return 'Idle';
-  }, [socketStatus, token, activeRoomId, rooms]);
+  }, [socketStatus, token, isLiveApiReady]);
 
   const isSocketOffline = socketStatus === 'error' || socketStatus === 'disconnected';
-  const showConversationOverlay = !token;
 
   const canReconnect = useMemo(
-    () => Boolean(token && supportsLiveChat && (isSocketOffline || socketStatus === 'idle')),
-    [isSocketOffline, socketStatus, supportsLiveChat, token],
+    () => Boolean(token && supportsLiveChat && isLiveApiReady && (isSocketOffline || socketStatus === 'idle')),
+    [isSocketOffline, socketStatus, supportsLiveChat, token, isLiveApiReady],
   );
 
   const renderConnectionAction = () => {
@@ -426,10 +442,6 @@ const ForumChatPage = () => {
   };
 
   const renderConversationAction = () => {
-    if (showConversationOverlay) {
-      return null;
-    }
-
     if (!token) {
       return (
         <Link to="/auth/login" className="primary-button my-4">
@@ -476,14 +488,8 @@ const ForumChatPage = () => {
       return;
     }
 
-    if (!supportsLiveChat) {
+    if (!supportsLiveChat || !isLiveApiReady) {
       setSendError('Live chat is temporarily unavailable.');
-      return;
-    }
-
-    const activeRoom = rooms.find((room) => room.id === activeRoomId);
-    if (activeRoom?.isFallback) {
-      setSendError('Cannot send messages in preview mode.');
       return;
     }
 
@@ -621,6 +627,16 @@ const ForumChatPage = () => {
                           <time title={message.timestamp}>{message.timestamp}</time>
                         </header>
                         <div className="conversation-message__bubble">
+                          {message.replyTo ? (
+                            <div className="text-xs text-white/80 mb-1 bg-white/5 rounded border border-white/10 p-2">
+                              <span className="block font-semibold text-white/90">
+                                Replying to {message.replyTo.author ?? 'a message'}
+                              </span>
+                              {message.replyTo.body ? (
+                                <p className="mt-0.5 text-white/80 break-words">{message.replyTo.body}</p>
+                              ) : null}
+                            </div>
+                          ) : null}
                           <p>{message.content}</p>
                         </div>
                       </div>
@@ -642,14 +658,14 @@ const ForumChatPage = () => {
                   onChange={(event) => setDraft(event.target.value)}
                   className="conversation-composer__input"
                   placeholder={
-                    !supportsLiveChat
+                    !supportsLiveChat || !isLiveApiReady
                       ? 'Live chat is temporarily unavailable.'
                       : token
                         ? 'Share a quick update or link to a thread.'
                         : 'Sign in to send messages.'
                   }
-                  disabled={!supportsLiveChat || !token || isSending}
-                  maxLength={MESSAGE_LIMIT + 20}
+                  disabled={!supportsLiveChat || !isLiveApiReady || !token || isSending}
+                  maxLength={MESSAGE_LIMIT}
                   ref={composerRef}
                   style={{
                     minHeight: '32px',
@@ -670,7 +686,7 @@ const ForumChatPage = () => {
                   </span>
                   <div className="conversation-composer__actions flex items-center gap-4">
                     {sendError && <span className="text-red-400 text-sm">{sendError}</span>}
-                    <button type="submit" className="primary-button !py-2 !px-6 gap-2" disabled={!supportsLiveChat || !token || isSending}>
+                    <button type="submit" className="primary-button !py-2 !px-6 gap-2" disabled={!supportsLiveChat || !isLiveApiReady || !token || isSending}>
                       {isSending ? 'Sending…' : <><FiSend size={16} /> Send</>}
                     </button>
                   </div>

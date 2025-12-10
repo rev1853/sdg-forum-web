@@ -18,24 +18,23 @@ const resolveSocketUrl = (value) => {
   }
 };
 
-const normalizeToken = (token) => {
-  if (!token) return undefined;
-  if (typeof token !== 'string') return undefined;
+const toBearerToken = (token) => {
+  if (!token || typeof token !== 'string') return undefined;
   const trimmed = token.trim();
   if (!trimmed) return undefined;
-  return trimmed.replace(/^Bearer\s+/i, '');
+  return /^Bearer\s+/i.test(trimmed) ? trimmed : `Bearer ${trimmed}`;
 };
 
 const createSocket = ({ baseUrl, token }) => {
-  const preparedToken = normalizeToken(token);
+  const preparedToken = toBearerToken(token);
   const auth = preparedToken ? { token: preparedToken } : undefined;
 
   return io(baseUrl, {
     auth,
     autoConnect: false,
-    transports: ['polling'],
+    transports: ['websocket', 'polling'],
     withCredentials: false,
-    extraHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
+    extraHeaders: preparedToken ? { Authorization: preparedToken } : undefined,
   });
 };
 
@@ -191,7 +190,7 @@ export const useChatSocket = ({
   }, []);
 
   const sendMessage = useCallback(
-    async ({ groupId, content }) => {
+    async ({ groupId, content, replyToId }) => {
       const socket = socketRef.current;
       if (!socket) throw new Error('Live chat is offline. Please try again in a moment.');
 
@@ -203,7 +202,7 @@ export const useChatSocket = ({
       let lastFailure = null;
 
       for (const event of sendEventVariants) {
-        const payload = { groupId, body: trimmed, content: trimmed };
+        const payload = { groupId, body: trimmed, content: trimmed, replyToId };
         const result = await emitWithAck(socket, event, payload);
 
         if (result.ok) {

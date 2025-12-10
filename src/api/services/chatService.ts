@@ -4,7 +4,6 @@ import type {
   ChatGroupDetail,
   ChatGroupListQuery,
   ChatGroupListResponse,
-  ChatJoinResponse,
   ChatMessage,
   ChatMessageListQuery,
   ChatMessageListResponse,
@@ -43,8 +42,6 @@ const normalizeMessagesQuery = (query?: ChatMessageListQuery) => {
 export interface ChatService {
   listGroups(query?: ChatGroupListQuery): Promise<ChatGroupListResponse | void>;
   getGroup(groupId: string): Promise<ChatGroupDetail | ChatGroup | void>;
-  joinGroup(groupId: string): Promise<ChatJoinResponse | void>;
-  leaveGroup(groupId: string): Promise<void>;
   listMessages(groupId: string, query?: ChatMessageListQuery): Promise<ChatMessageListResponse | { messages?: ChatMessage[] } | void>;
 }
 
@@ -61,18 +58,6 @@ export const createChatService = (client: ApiClient): ChatService => ({
     client.request<ChatGroupDetail | ChatGroup | void>({
       path: `/chat/groups/${encodeId(groupId)}`,
       method: 'GET',
-    }),
-  joinGroup: (groupId) =>
-    client.request<ChatJoinResponse | void>({
-      path: `/chat/groups/${encodeId(groupId)}/join`,
-      method: 'POST',
-      requiresAuth: true,
-    }),
-  leaveGroup: (groupId) =>
-    client.request<void>({
-      path: `/chat/groups/${encodeId(groupId)}/join`,
-      method: 'DELETE',
-      requiresAuth: true,
     }),
   listMessages: (groupId, query) =>
     client.request<ChatMessageListResponse | { messages?: ChatMessage[] } | void>({
