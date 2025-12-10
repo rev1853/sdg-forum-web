@@ -11,7 +11,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    hmr: true
+    hmr: true,
+    proxy: {
+      '/api': {
+        target: 'https://sdg-forum-api.truesurvi4.xyz',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   },
   resolve: {
     alias: {

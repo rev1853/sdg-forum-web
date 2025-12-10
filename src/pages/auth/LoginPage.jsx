@@ -34,8 +34,19 @@ const LoginPage = () => {
     [loginWithGoogle, navigate],
   );
 
-  const { ready: isGoogleReady, loading: isGoogleLoading, error: googleError, signIn: triggerGoogleSignIn } =
+  const { ready: isGoogleReady, loading: isGoogleLoading, error: googleError, renderButton } =
     useGoogleSignIn(handleGoogleCredential);
+
+  const googleButtonRef = useRef(null);
+
+  useEffect(() => {
+    if (isGoogleReady && googleButtonRef.current) {
+      renderButton(googleButtonRef.current, {
+        theme: 'filled_black', // Matches dark theme better
+        width: '100%',
+      });
+    }
+  }, [isGoogleReady, renderButton]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -88,35 +99,35 @@ const LoginPage = () => {
     >
       <div className="auth-card">
         <form className="auth-form" onSubmit={handleSubmit}>
-                                                  <div className="form-group">
-                                                    <label htmlFor="identifier">Email or username</label>
-                                                    <div className="input-card">
-                                                      <input
-                                                        id="identifier"
-                                                        name="identifier"
-                                                        type="text"
-                                                        placeholder="name@example.com"
-                                                        value={formState.identifier}
-                                                        onChange={handleChange}
-                                                        required
-                                                      />
-                                                    </div>
-                                                  </div>
-                                          
-                                                  <div className="form-group">
-                                                    <label htmlFor="password">Password</label>
-                                                    <div className="input-card">
-                                                      <input
-                                                        id="password"
-                                                        name="password"
-                                                        type="password"
-                                                        placeholder="••••••••"
-                                                        value={formState.password}
-                                                        onChange={handleChange}
-                                                        required
-                                                      />
-                                                    </div>
-                                                  </div>          <div className="form-inline">
+          <div className="form-group">
+            <label htmlFor="identifier">Email or username</label>
+            <div className="input-card">
+              <input
+                id="identifier"
+                name="identifier"
+                type="text"
+                placeholder="name@example.com"
+                value={formState.identifier}
+                onChange={handleChange}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="password">Password</label>
+            <div className="input-card">
+              <input
+                id="password"
+                name="password"
+                type="password"
+                placeholder="••••••••"
+                value={formState.password}
+                onChange={handleChange}
+                required
+              />
+            </div>
+          </div>          <div className="form-inline">
             <label className="checkbox">
               <input type="checkbox" checked={remember} onChange={() => setRemember(!remember)} />
               Remember me
@@ -132,17 +143,16 @@ const LoginPage = () => {
 
           <div className="oauth-section">
             <p className="form-helper">Or continue with</p>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={triggerGoogleSignIn}
-              disabled={isSubmitting || (!isGoogleReady && !isGoogleLoading)}
-            >
-              <span className="oauth-icon">
-                <FcGoogle size={20} />
-              </span>
-              <span>{isGoogleLoading && !isGoogleReady ? 'Preparing Google…' : 'Continue with Google'}</span>
-            </button>
+            <div ref={googleButtonRef} className="w-full h-[44px] flex items-center justify-center">
+              {!isGoogleReady && (
+                <button type="button" className="secondary-button w-full" disabled>
+                  <span className="oauth-icon">
+                    <FcGoogle size={20} />
+                  </span>
+                  <span>Loading Google...</span>
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>
