@@ -35,7 +35,7 @@ const createSocket = ({ baseUrl, token }) => {
     query,
     autoConnect: false,
     transports: ['polling', 'websocket'], // start with long-polling to avoid websocket handshake failures, then upgrade
-    withCredentials: true,
+    withCredentials: false, // avoid credentialed requests so CORS can allow wildcard origins
   });
 };
 
