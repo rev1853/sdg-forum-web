@@ -12,7 +12,8 @@
 import { io } from 'socket.io-client';
 
 const socket = io(API_BASE_URL, {
-  auth: { token: `Bearer ${jwt}` }
+  auth: { token: `Bearer ${jwt}` },
+  withCredentials: true // needed if your client uses cookies or credentialed requests
   // Alternatively: query: { token: `Bearer ${jwt}` }
 });
 
@@ -85,6 +86,7 @@ socket.on('connect_error', (err) => {
 - All event callbacks return `{ status: 'ok' }` or `{ status: 'error', message }`.
 - Connection-level failures surface via `connect_error`.
 - If the provided `groupId` is invalid (not one of the SDG rooms), callbacks return an error.
+- If your client sets `withCredentials: true`, the API must expose explicit origins (env `CORS_ORIGINS`, comma-separated). Wildcard origins will be rejected by browsers with credentials.
 
 ### Notes
 - Messages are text-only per spec; attachments are not processed.
