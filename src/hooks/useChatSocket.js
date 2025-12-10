@@ -32,7 +32,7 @@ const createSocket = ({ baseUrl, token }) => {
   return io(baseUrl, {
     auth,
     autoConnect: false,
-    transports: ['websocket', 'polling'],
+    transports: ['polling', 'websocket'], // start with long-polling to avoid websocket handshake failures, then upgrade
     withCredentials: false,
     extraHeaders: preparedToken ? { Authorization: preparedToken } : undefined,
   });
