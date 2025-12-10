@@ -105,14 +105,31 @@ export const useGoogleSignIn = (onCredential) => {
     });
   }, []);
 
+  const renderButton = useCallback((element, options = {}) => {
+    const google = window.google?.accounts?.id;
+    if (!google || !element) return;
+
+    google.renderButton(element, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      text: 'continue_with',
+      shape: 'rectangular',
+      logo_alignment: 'left',
+      width: '100%',
+      ...options,
+    });
+  }, []);
+
   return useMemo(
     () => ({
       ready,
       loading,
       error,
       signIn,
+      renderButton,
     }),
-    [ready, loading, error, signIn],
+    [ready, loading, error, signIn, renderButton],
   );
 };
 
