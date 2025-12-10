@@ -9,6 +9,10 @@ const sanitizeBaseUrl = (value: string | undefined | null): string | null => {
     const trimmed = value.trim();
     if (!trimmed) return null;
 
+    if (trimmed.startsWith('/')) {
+        return trimmed.replace(/\/+$/, '');
+    }
+
     try {
         const parsed = new URL(trimmed);
         let normalizedPath = parsed.pathname.replace(/\/+$/, '');
