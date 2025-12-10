@@ -25,18 +25,29 @@ const toBearerToken = (token) => {
   return /^Bearer\s+/i.test(trimmed) ? trimmed : `Bearer ${trimmed}`;
 };
 
+const maskTokenForLog = (token) => {
+  if (!token || typeof token !== 'string') return 'none';
+  const trimmed = token.trim();
+  if (trimmed.length <= 10) return `${trimmed.slice(0, 4)}…`;
+  return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`;
+};
+
 const createSocket = ({ baseUrl, token }) => {
   const preparedToken = toBearerToken(token);
   const auth = preparedToken ? { token: preparedToken } : undefined;
   const query = preparedToken ? { token: preparedToken } : undefined;
 
-  return io(baseUrl, {
+  const socket = io(baseUrl, {
     auth,
     query,
     autoConnect: false,
-    transports: ['websocket', 'polling'],
+    transports: ['polling', 'websocket'], // start with long-polling to reduce websocket handshake flakiness, then upgrade
     withCredentials: true, // align with backend CORS when explicit origins are allowed
   });
+
+  socket.__tokenHint = maskTokenForLog(preparedToken);
+
+  return socket;
 };
 
 const emitWithAck = async (socket, event, payload) => {
@@ -99,6 +110,17 @@ export const useChatSocket = ({
     };
 
     const handleError = (error) => {
+      const transport = socket.io?.engine?.transport?.name;
+      const url = socket.io?.uri;
+      console.error('Socket connection error:', {
+        message: error?.message,
+        code: error?.code,
+        description: error?.description,
+        transport,
+        url,
+        token: socket.__tokenHint,
+        data: error?.data,
+      });
       setStatus('error');
       setLastError(error ?? new Error('Socket connection failed'));
     };
@@ -106,6 +128,11 @@ export const useChatSocket = ({
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('connect_error', handleError);
+    socket.on('error', handleError);
+    const handleUpgrade = (t) => {
+      console.log('Socket transport upgraded to', t?.name ?? 'unknown');
+    };
+    socket.io?.engine?.on?.('upgrade', handleUpgrade);
 
     socket.connect();
 
@@ -113,6 +140,8 @@ export const useChatSocket = ({
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('connect_error', handleError);
+      socket.off('error', handleError);
+      socket.io?.engine?.off?.('upgrade', handleUpgrade);
       socket.disconnect();
       socketRef.current = null;
     };
