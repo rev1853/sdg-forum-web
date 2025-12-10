@@ -85,7 +85,6 @@ socket.on('connect_error', (err) => {
 - All event callbacks return `{ status: 'ok' }` or `{ status: 'error', message }`.
 - Connection-level failures surface via `connect_error`.
 - If the provided `groupId` is invalid (not one of the SDG rooms), callbacks return an error.
-- If your client sets `withCredentials: true`, the API must expose explicit origins (env `CORS_ORIGINS`, comma-separated). Wildcard origins will be rejected by browsers with credentials. Credentials are optional since identification uses `userId`.
 
 ### Notes
 - Messages are text-only per spec; attachments are not processed.

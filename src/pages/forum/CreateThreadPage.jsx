@@ -6,7 +6,7 @@ import { useApi } from '../../api';
 import { useAuth } from '@/context/AuthContext';
 
 const CreateThreadPage = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { threads, categories: categoriesApi } = useApi();
   const navigate = useNavigate();
 
@@ -29,6 +29,7 @@ const CreateThreadPage = () => {
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reviewFeedback, setReviewFeedback] = useState(null);
 
 
 
@@ -138,6 +139,7 @@ const CreateThreadPage = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
+    setReviewFeedback(null);
 
     if (!token) {
       setError('You need to be signed in to create a thread.');
@@ -186,8 +188,21 @@ const CreateThreadPage = () => {
       navigate('/forum/threads');
     } catch (caughtError) {
       console.error('Failed to create thread', caughtError);
-      if (caughtError?.status === 400 && caughtError?.data?.review_score !== undefined) {
-        setError(`Thread rejected by AI review (Score: ${caughtError.data.review_score}). Please improve the content quality and try again.`);
+      const reviewStatus = caughtError?.data?.status ?? caughtError?.data?.details?.status;
+      const reviewScore = caughtError?.data?.details?.score ?? caughtError?.data?.review_score ?? caughtError?.data?.score;
+      const reviewText = caughtError?.data?.details?.review_text ?? caughtError?.data?.review_text;
+
+      if (reviewStatus === 'REVIEW_FAILED') {
+        setReviewFeedback({
+          status: reviewStatus,
+          score: reviewScore,
+          text: reviewText,
+        });
+        const baseMessage =
+          caughtError?.data?.error ||
+          caughtError?.data?.message ||
+          'Your draft did not pass the relevance review. Please adjust your content and try again.';
+        setError(baseMessage);
       } else {
         const message =
           caughtError?.data?.message ||
@@ -229,6 +244,25 @@ const CreateThreadPage = () => {
             {error && (
               <div className="form-feedback form-feedback--error">
                 <FiInfo /> {error}
+              </div>
+            )}
+            {reviewFeedback && user?.id && (
+              <div className="form-feedback form-feedback--warning">
+                <FiInfo />
+                <div>
+                  <strong>Review feedback</strong>
+                  <p className="mt-1">
+                    {typeof reviewFeedback.score === 'number' ? (
+                      <>Score: <span className="font-semibold">{reviewFeedback.score}</span></>
+                    ) : (
+                      'Score: unavailable'
+                    )}
+                  </p>
+                  {reviewFeedback.text ? <p className="mt-1 text-sm">{reviewFeedback.text}</p> : null}
+                  <p className="mt-1 text-sm text-white/80">
+                    Align your draft more closely with the selected SDG categories before resubmitting.
+                  </p>
+                </div>
               </div>
             )}
             {loadError && (
