@@ -34,10 +34,12 @@ const maskTokenForLog = (token) => {
 
 const createSocket = ({ baseUrl, token }) => {
   const preparedToken = toBearerToken(token);
-  const auth = preparedToken ? { token: preparedToken } : undefined;
-  const query = preparedToken ? { token: preparedToken } : undefined;
+  const rawToken = token && typeof token === 'string' ? token.trim().replace(/^Bearer\s+/i, '') : undefined;
+  const auth = preparedToken ? { token: preparedToken, jwt: rawToken } : undefined;
+  const query = preparedToken ? { token: preparedToken, jwt: rawToken } : undefined;
 
   const socket = io(baseUrl, {
+    path: '/socket.io',
     auth,
     query,
     autoConnect: false,
@@ -46,6 +48,15 @@ const createSocket = ({ baseUrl, token }) => {
   });
 
   socket.__tokenHint = maskTokenForLog(preparedToken);
+  socket.__baseUrl = baseUrl;
+  socket.__opts = { transports: ['polling', 'websocket'], withCredentials: true };
+
+  console.log('[chat] creating socket', {
+    baseUrl,
+    token: socket.__tokenHint,
+    transports: socket.__opts.transports,
+    withCredentials: socket.__opts.withCredentials,
+  });
 
   return socket;
 };
