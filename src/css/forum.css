@@ -644,7 +644,7 @@
 
 /* Chat Page */
 .chat-page {
-  height: calc(100vh - 4rem);
+  min-height: calc(100vh - 4rem);
   max-width: 1600px;
   margin: 0 auto;
   padding: 1rem;
@@ -654,56 +654,45 @@
   display: grid;
   grid-template-columns: 300px 1fr;
   gap: 1rem;
-  height: 100%;
-  background: rgba(6, 12, 35, 0.6);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 24px;
-  overflow: hidden;
+  align-items: flex-start;
+  /* Align items to top for sticky behavior */
+  /* Removed fixed height and overflow hidden */
 }
 
 .chat-shell__rooms {
-  background: rgba(0, 0, 0, 0.2);
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(6, 12, 35, 0.6);
+  /* Match shell background since it's now separate */
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 24px;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-  /* Ensure container doesn't expand */
+
+  /* Sticky positioning */
+  position: sticky;
+  top: 5.5rem;
+  /* Adjust based on navbar height + padding */
+  height: calc(100vh - 6.5rem);
+  overflow-y: auto;
+
+  /* Custom Scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
 .chat-shell__rooms-header {
   padding: 1.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   flex-shrink: 0;
-  /* Prevent header from shrinking */
-}
-
-.chat-shell__rooms-header h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.chat-shell__rooms-header p {
-  margin: 0.25rem 0 0;
-  font-size: 0.85rem;
-  color: var(--color-text-secondary);
+  background: rgba(0, 0, 0, 0.2);
+  /* Keep header distinct */
 }
 
 .chat-shell__rooms ul {
   list-style: none;
   padding: 1rem;
   margin: 0;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-  /* Critical for nested flex scrolling */
-
-  /* Custom Scrollbar */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  /* overflow-y handled by container now */
 }
 
 .chat-shell__rooms ul::-webkit-scrollbar {
@@ -721,6 +710,7 @@
 
 .chat-shell__rooms ul::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
 }
 
 .chat-room {
@@ -767,8 +757,15 @@
 .chat-shell__conversation {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
+  /* Ensure it takes full height */
   position: relative;
+  background: rgba(6, 12, 35, 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 24px;
+  overflow: visible;
+  /* Allow content to flow */
 }
 
 .conversation-header {
@@ -778,6 +775,8 @@
   justify-content: space-between;
   align-items: center;
   background: rgba(0, 0, 0, 0.1);
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
 }
 
 .conversation-header h2 {
@@ -789,32 +788,19 @@
 
 .conversation-stream {
   flex: 1;
-  overflow-y: auto;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
-
-  /* Custom Scrollbar */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  height: auto;
+  /* Allow natural height */
+  overflow: visible;
+  /* Use window scroll */
 }
 
 .conversation-stream::-webkit-scrollbar {
-  width: 4px;
-}
-
-.conversation-stream::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.conversation-stream::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-
-.conversation-stream::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  display: none;
+  /* Hide scrollbar if it appears */
 }
 
 .conversation-message {
@@ -921,7 +907,16 @@
 .conversation-composer {
   padding: 1.5rem;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(6, 12, 35, 0.95);
+  /* Opaque background for sticky */
+  backdrop-filter: blur(20px);
+
+  /* Sticky positioning */
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  border-bottom-left-radius: 24px;
+  border-bottom-right-radius: 24px;
 }
 
 .conversation-composer__input {
@@ -962,6 +957,11 @@
   .chat-shell__rooms {
     display: none;
     /* Mobile navigation logic would be needed here */
+  }
+
+  .chat-shell__rooms {
+    position: static;
+    height: auto;
   }
 }
 
@@ -2484,6 +2484,7 @@
   margin-bottom: 1rem;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }

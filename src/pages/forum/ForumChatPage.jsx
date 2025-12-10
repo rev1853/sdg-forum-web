@@ -126,26 +126,26 @@ const normalizeMessage = (message, baseUrl) => {
   const replySource = raw.reply_to ?? raw.replyTo ?? null;
   const replyPreview = replySource
     ? {
-        id:
-          replySource.id ??
-          replySource.message_id ??
-          replySource.messageId ??
-          replySource.original_id ??
-          null,
-        author:
-          replySource.user?.name ??
-          replySource.user?.username ??
-          replySource.author?.name ??
-          replySource.author?.username ??
-          replySource.user ??
-          replySource.author ??
-          null,
-        body: typeof replySource.body === 'string' && replySource.body.trim().length > 0
-          ? replySource.body.trim()
-          : typeof replySource.content === 'string' && replySource.content.trim().length > 0
-            ? replySource.content.trim()
-            : null,
-      }
+      id:
+        replySource.id ??
+        replySource.message_id ??
+        replySource.messageId ??
+        replySource.original_id ??
+        null,
+      author:
+        replySource.user?.name ??
+        replySource.user?.username ??
+        replySource.author?.name ??
+        replySource.author?.username ??
+        replySource.user ??
+        replySource.author ??
+        null,
+      body: typeof replySource.body === 'string' && replySource.body.trim().length > 0
+        ? replySource.body.trim()
+        : typeof replySource.content === 'string' && replySource.content.trim().length > 0
+          ? replySource.content.trim()
+          : null,
+    }
     : null;
   const hasReplyContext = replyPreview && (replyPreview.body || replyPreview.author);
 
@@ -385,9 +385,11 @@ const ForumChatPage = () => {
   }, [socketError]);
 
   useEffect(() => {
-    const element = streamRef.current;
-    if (!element) return;
-    element.scrollTop = element.scrollHeight;
+    // Scroll to bottom of window when messages change
+    window.scrollTo({
+      top: document.documentElement.scrollHeight,
+      behavior: 'smooth'
+    });
   }, [messages]);
 
   useEffect(() => {
