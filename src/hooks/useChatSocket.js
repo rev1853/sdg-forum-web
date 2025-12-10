@@ -28,13 +28,14 @@ const toBearerToken = (token) => {
 const createSocket = ({ baseUrl, token }) => {
   const preparedToken = toBearerToken(token);
   const auth = preparedToken ? { token: preparedToken } : undefined;
+  const query = preparedToken ? { token: preparedToken } : undefined;
 
   return io(baseUrl, {
     auth,
+    query,
     autoConnect: false,
     transports: ['polling', 'websocket'], // start with long-polling to avoid websocket handshake failures, then upgrade
-    withCredentials: false,
-    extraHeaders: preparedToken ? { Authorization: preparedToken } : undefined,
+    withCredentials: true,
   });
 };
 
