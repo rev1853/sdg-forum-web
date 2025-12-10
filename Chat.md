@@ -4,25 +4,24 @@
 - Connect to the same origin as the REST API (e.g. `https://api.example.com`) using Socket.IO v4.
 - Real-time traffic uses WebSocket upgrades with long polling as fallback; no additional path configuration is required.
 
-### Authentication
-- Every connection must present the JWT returned by `/auth/login` or `/auth/google`.
-- Pass the token in the handshake via `auth` or query/headers:
+### Identification (no JWT on socket)
+- Provide the `userId` in the socket handshake; no JWT is required for the websocket.
+- Pass it via `auth` (preferred) or query/headers:
 
 ```js
 import { io } from 'socket.io-client';
 
 const socket = io(API_BASE_URL, {
-  auth: { token: `Bearer ${jwt}` },
-  withCredentials: true // needed if your client uses cookies or credentialed requests
-  // Alternatively: query: { token: `Bearer ${jwt}` }
+  auth: { userId: '<user-id>' }
+  // Alternatively: query: { userId: '<user-id>' } or header `x-user-id`
 });
 
 socket.on('connect_error', (err) => {
-  console.error('Socket auth failed:', err.message);
+  console.error('Socket identification failed:', err.message);
 });
 ```
 
-- The server rejects unauthenticated handshakes with `Unauthorized`.
+- The server rejects handshakes without a valid `userId` (must exist in DB).
 
 ### Room Model
 - There are 17 fixed chat groups, one per SDG, with ids `sdg-group-<sdg_number>` (e.g., `sdg-group-1` for SDG 1).
@@ -86,7 +85,7 @@ socket.on('connect_error', (err) => {
 - All event callbacks return `{ status: 'ok' }` or `{ status: 'error', message }`.
 - Connection-level failures surface via `connect_error`.
 - If the provided `groupId` is invalid (not one of the SDG rooms), callbacks return an error.
-- If your client sets `withCredentials: true`, the API must expose explicit origins (env `CORS_ORIGINS`, comma-separated). Wildcard origins will be rejected by browsers with credentials.
+- If your client sets `withCredentials: true`, the API must expose explicit origins (env `CORS_ORIGINS`, comma-separated). Wildcard origins will be rejected by browsers with credentials. Credentials are optional since identification uses `userId`.
 
 ### Notes
 - Messages are text-only per spec; attachments are not processed.

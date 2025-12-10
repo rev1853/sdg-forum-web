@@ -18,42 +18,32 @@ const resolveSocketUrl = (value) => {
   }
 };
 
-const toBearerToken = (token) => {
-  if (!token || typeof token !== 'string') return undefined;
-  const trimmed = token.trim();
-  if (!trimmed) return undefined;
-  return /^Bearer\s+/i.test(trimmed) ? trimmed : `Bearer ${trimmed}`;
+const maskForLog = (value) => {
+  if (!value || typeof value !== 'string') return 'none';
+  const trimmed = value.trim();
+  if (trimmed.length <= 8) return `${trimmed.slice(0, 4)}…`;
+  return `${trimmed.slice(0, 6)}…${trimmed.slice(-3)}`;
 };
 
-const maskTokenForLog = (token) => {
-  if (!token || typeof token !== 'string') return 'none';
-  const trimmed = token.trim();
-  if (trimmed.length <= 10) return `${trimmed.slice(0, 4)}…`;
-  return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`;
-};
-
-const createSocket = ({ baseUrl, token }) => {
-  const preparedToken = toBearerToken(token);
-  const rawToken = token && typeof token === 'string' ? token.trim().replace(/^Bearer\s+/i, '') : undefined;
-  const auth = preparedToken ? { token: preparedToken, jwt: rawToken } : undefined;
-  const query = preparedToken ? { token: preparedToken, jwt: rawToken } : undefined;
+const createSocket = ({ baseUrl, userId }) => {
+  const auth = userId ? { userId } : undefined;
+  const query = userId ? { userId } : undefined;
 
   const socket = io(baseUrl, {
-    path: '/socket.io',
     auth,
     query,
     autoConnect: false,
     transports: ['polling', 'websocket'], // start with long-polling to reduce websocket handshake flakiness, then upgrade
-    withCredentials: true, // align with backend CORS when explicit origins are allowed
+    withCredentials: false, // no credentials needed for userId-based identification
   });
 
-  socket.__tokenHint = maskTokenForLog(preparedToken);
+  socket.__userHint = maskForLog(userId);
   socket.__baseUrl = baseUrl;
-  socket.__opts = { transports: ['polling', 'websocket'], withCredentials: true };
+  socket.__opts = { transports: ['polling', 'websocket'], withCredentials: false };
 
   console.log('[chat] creating socket', {
     baseUrl,
-    token: socket.__tokenHint,
+    userId: socket.__userHint,
     transports: socket.__opts.transports,
     withCredentials: socket.__opts.withCredentials,
   });
@@ -79,13 +69,13 @@ const emitWithAck = async (socket, event, payload) => {
 
 export const useChatSocket = ({
   baseUrl,
-  token,
+  userId,
   enabled = true,
   onMessage,
   onMessageRemoved,
   sendEventVariants = DEFAULT_SEND_EVENTS,
 } = {}) => {
-  const [status, setStatus] = useState(token && enabled ? 'connecting' : 'idle');
+  const [status, setStatus] = useState(userId && enabled ? 'connecting' : 'idle');
   const [lastError, setLastError] = useState(null);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const socketRef = useRef(null);
@@ -93,7 +83,7 @@ export const useChatSocket = ({
   const resolvedBaseUrl = useMemo(() => resolveSocketUrl(baseUrl), [baseUrl]);
 
   useEffect(() => {
-    if (!enabled || !token) {
+    if (!enabled || !userId) {
       setStatus('idle');
       setLastError(null);
 
@@ -105,7 +95,7 @@ export const useChatSocket = ({
       return;
     }
 
-    const socket = createSocket({ baseUrl: resolvedBaseUrl, token });
+    const socket = createSocket({ baseUrl: resolvedBaseUrl, userId });
     socketRef.current = socket;
     setStatus('connecting');
     setLastError(null);
@@ -129,7 +119,7 @@ export const useChatSocket = ({
         description: error?.description,
         transport,
         url,
-        token: socket.__tokenHint,
+        userId: socket.__userHint,
         data: error?.data,
       });
       setStatus('error');
@@ -156,7 +146,7 @@ export const useChatSocket = ({
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [enabled, resolvedBaseUrl, token, reconnectAttempt]);
+  }, [enabled, resolvedBaseUrl, userId, reconnectAttempt]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -274,7 +264,7 @@ export const useChatSocket = ({
   );
 
   const reconnect = useCallback(() => {
-    if (!enabled || !token) {
+    if (!enabled || !userId) {
       setLastError(new Error('Sign in to reconnect to live chat.'));
       return;
     }
@@ -295,7 +285,7 @@ export const useChatSocket = ({
     setLastError(null);
     setStatus('connecting');
     setReconnectAttempt((current) => current + 1);
-  }, [enabled, token]);
+  }, [enabled, userId]);
 
   return useMemo(
     () => ({

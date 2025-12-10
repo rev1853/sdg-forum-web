@@ -268,8 +268,8 @@ const ForumChatPage = () => {
     error: socketError,
   } = useChatSocket({
     baseUrl,
-    token,
-    enabled: Boolean(token && supportsLiveChat && isLiveApiReady),
+    userId: user?.id,
+    enabled: Boolean(user?.id && supportsLiveChat && isLiveApiReady),
     onMessage: (payload) => {
       const mapped = normalizeMessage(payload, baseUrl);
       if (!mapped || !mapped.groupId) return;
